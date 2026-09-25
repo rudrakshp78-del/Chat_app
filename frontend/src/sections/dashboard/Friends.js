@@ -100,7 +100,7 @@ const Friends = ({ open, handleClose }) => {
       open={open}
       keepMounted
       onClose={handleClose}
-      sx={{ p: 4 }}
+      sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
     >
       {/* <DialogTitle>{"Friends"}</DialogTitle> */}
       <Stack p={2} sx={{ width: "100%" }}>

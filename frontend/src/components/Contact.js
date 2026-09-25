@@ -130,7 +130,7 @@ const Contact = () => {
   return (
     <Box
       sx={{
-        width: 320,
+        width: { xs: "100%", md: 320 },
         height: "100%",
         minHeight: 0,
         overflow: "hidden",

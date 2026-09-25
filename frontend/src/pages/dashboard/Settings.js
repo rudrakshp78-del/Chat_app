@@ -20,10 +20,12 @@ import {
   PencilCircle,
 } from "phosphor-react";
 import { faker } from "@faker-js/faker";
+import { useNavigate } from "react-router-dom";
 import Shortcuts from "../../sections/dashboard/settings/Shortcuts";
 
 const Settings = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
 
   const [openShortcuts, setOpenShortcuts] = useState(false);
 
@@ -87,24 +89,24 @@ const Settings = () => {
   ];
   return (
     <>
-      <Stack direction={"row"} sx={{ width: "100%" }}>
+      <Stack direction={"row"} sx={{ width: "100%", height: "100%" }}>
         {/* leftpanel */}
         <Box
           sx={{
-            overflowY: "scroll",
-            height: "100vh",
-            width: 320,
+            overflowY: "auto",
+            height: "100%",
+            width: { xs: "100%", md: 360 },
             backgroundColor:
               theme.palette.mode === "light"
                 ? "#F8FAFF"
-                : theme.palette.background,
-            boxShadow: "0px 0px 2px rgba(0, 0, 0, 0.25)",
+                : theme.palette.background.paper,
+            boxShadow: { xs: "none", md: "0px 0px 2px rgba(0, 0, 0, 0.25)" },
           }}
         >
-          <Stack p={4} spacing={5}>
+          <Stack p={{ xs: 2.5, sm: 4 }} spacing={4}>
             {/* header */}
-            <Stack direction={"row"} alignItems="center" spacing={3}>
-              <IconButton>
+            <Stack direction={"row"} alignItems="center" spacing={2}>
+              <IconButton onClick={() => navigate("/app")}>
                 <CaretLeft size={24} color={"#4B4B4B"} />
               </IconButton>
               <Typography variant="h6">Settings</Typography>

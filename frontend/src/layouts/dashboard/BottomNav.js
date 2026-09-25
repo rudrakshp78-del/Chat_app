@@ -1,52 +1,76 @@
 import React from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, IconButton, Stack } from "@mui/material";
+import { useLocation, useNavigate } from "react-router-dom";
+import { ChatCircleDots, GearSix, Phone, Users } from "phosphor-react";
 import ProfileMenu from "./ProfileMenu";
-import { Nav_Buttons } from "../../data";
+
+const NAV_ITEMS = [
+  { index: 0, path: "/app", icon: <ChatCircleDots size={24} />, title: "Chats" },
+  { index: 1, path: "/group", icon: <Users size={24} />, title: "Groups" },
+  { index: 2, path: "/call", icon: <Phone size={24} />, title: "Calls" },
+  { index: 3, path: "/Settings", icon: <GearSix size={24} />, title: "Settings" },
+];
 
 const BottomNav = () => {
   const theme = useTheme();
+  const navigate = useNavigate();
+  const location = useLocation();
 
-  const [selectedTab, setSelectedTab] = React.useState(0);
-
-  const handleChangeTab = (index) => {
-    setSelectedTab(index);
-  };
+  const currentPath = location.pathname.toLowerCase();
 
   return (
     <Box
       sx={{
-        zIndex: 10,
-        position: "absolute",
-        bottom: 0,
-        width: "100vw",
-
+        zIndex: 1000,
+        width: "100%",
+        flexShrink: 0,
         backgroundColor: theme.palette.background.paper,
-        boxShadow: "0px 0px 2px rgba(0, 0, 0, 0.25)",
+        boxShadow: "0px -1px 3px rgba(0, 0, 0, 0.08)",
+        pb: "max(6px, env(safe-area-inset-bottom))",
+        pt: 0.75,
+        px: 1,
       }}
     >
       <Stack
         sx={{ width: "100%" }}
         direction="row"
-        alignItems={"center"}
-        justifyContent="space-between"
-        spacing={2}
-        p={2}
+        alignItems="center"
+        justifyContent="space-around"
       >
-        {Nav_Buttons.map((el) => {
-          return el.index === selectedTab ? (
-            <Box sx={{ backgroundColor: theme.palette.primary.main, borderRadius: 1.5 }} p={1}>
-              <IconButton sx={{ width: "max-content", color: "#ffffff" }}>
+        {NAV_ITEMS.map((el) => {
+          const isSelected =
+            currentPath === el.path.toLowerCase() ||
+            (el.path === "/app" && currentPath === "/");
+
+          return isSelected ? (
+            <Box
+              key={el.index}
+              sx={{
+                backgroundColor: theme.palette.primary.main,
+                borderRadius: 1.5,
+              }}
+              p={0.75}
+            >
+              <IconButton
+                sx={{
+                  width: "max-content",
+                  color: "#ffffff",
+                  p: 0.5,
+                }}
+              >
                 {el.icon}
               </IconButton>
             </Box>
           ) : (
             <IconButton
+              key={el.index}
               onClick={() => {
-                handleChangeTab(el.index);
+                navigate(el.path);
               }}
               sx={{
                 width: "max-content",
+                p: 1.25,
                 color:
                   theme.palette.mode === "light"
                     ? "#080707"

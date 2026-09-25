@@ -89,7 +89,7 @@ const MessageBubble = ({ el, children }) => {
           width: "fit-content",
 
           // Don't let it become too large
-          maxWidth: "75%",
+          maxWidth: { xs: "82%", sm: "75%" },
 
           // Prevent flexbox from shrinking it
           flexShrink: 0,
@@ -163,18 +163,19 @@ const MediaMsg = ({ el }) => {
     <MessageBubble el={el}>
       <Stack spacing={1}>
         <Box
-  component="img"
-  src={el.img}
-  alt={el.message}
-  sx={{
-    display: "block",
-    width: 280,
-    maxWidth: "100%",
-    height: 180,
-    objectFit: "cover",
-    borderRadius: 1.5,
-  }}
-/>
+          component="img"
+          src={el.img}
+          alt={el.message}
+          sx={{
+            display: "block",
+            width: "100%",
+            maxWidth: 280,
+            height: "auto",
+            maxHeight: 200,
+            objectFit: "cover",
+            borderRadius: 1.5,
+          }}
+        />
 
         <Typography
           variant="body2"

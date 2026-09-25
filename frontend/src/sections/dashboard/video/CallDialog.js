@@ -324,20 +324,39 @@ const CallDialog = ({ open, handleClose }) => {
         keepMounted
         onClose={handleDisconnect}
         aria-describedby="alert-dialog-slide-description"
+        sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 2 }, maxWidth: 500 } }}
       >
         <DialogContent>
-          <Stack direction="row" spacing={24} p={2}>
-            <Stack>
+          <Stack
+            direction={{ xs: "column", sm: "row" }}
+            spacing={{ xs: 2, sm: 4 }}
+            alignItems="center"
+            justifyContent="center"
+            p={{ xs: 1, sm: 2 }}
+          >
+            <Stack alignItems="center">
               <video
-                style={{ height: 200, width: 200 }}
+                style={{
+                  height: "auto",
+                  maxHeight: 180,
+                  width: "100%",
+                  maxWidth: 200,
+                  borderRadius: 8,
+                }}
                 id="local-video"
                 controls={false}
               />
               <audio id="local-audio" controls={false} />
             </Stack>
-            <Stack>
+            <Stack alignItems="center">
               <video
-                style={{ height: 200, width: 200 }}
+                style={{
+                  height: "auto",
+                  maxHeight: 180,
+                  width: "100%",
+                  maxWidth: 200,
+                  borderRadius: 8,
+                }}
                 id="remote-video"
                 controls={false}
               />

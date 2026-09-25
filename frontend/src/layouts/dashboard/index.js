@@ -1,10 +1,11 @@
 import React, { useEffect } from "react";
-import { Stack } from "@mui/material";
-import { Navigate, Outlet } from "react-router-dom";
+import { Box } from "@mui/material";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import useResponsive from "../../hooks/useResponsive";
 import SideBar from "./sidebar";
+import BottomNav from "./BottomNav";
 
 import {
   FetchUserProfile,
@@ -31,6 +32,7 @@ import VideoCallDialog from "../../sections/dashboard/video/CallDialog";
 
 const DashboardLayout = () => {
   const isDesktop = useResponsive("up", "md");
+  const location = useLocation();
 
   const dispatch = useDispatch();
 
@@ -183,13 +185,39 @@ const DashboardLayout = () => {
     return <Navigate to="/auth/login" replace />;
   }
 
+  // Show BottomNav on mobile when NOT inside an active chat conversation
+  const isInsideChat =
+    location.pathname.toLowerCase().startsWith("/app") && room_id !== null;
+
   return (
     <>
-      <Stack direction="row">
+      <Box
+        sx={{
+          display: "flex",
+          flexDirection: isDesktop ? "row" : "column",
+          width: "100vw",
+          height: { xs: "100dvh", md: "100vh" },
+          overflow: "hidden",
+        }}
+      >
         {isDesktop && <SideBar />}
 
-        <Outlet />
-      </Stack>
+        <Box
+          sx={{
+            flex: 1,
+            width: "100%",
+            height: "100%",
+            minWidth: 0,
+            minHeight: 0,
+            overflow: "hidden",
+            display: "flex",
+          }}
+        >
+          <Outlet />
+        </Box>
+
+        {!isDesktop && !isInsideChat && <BottomNav />}
+      </Box>
 
       {/* Audio call notification */}
       {open_audio_notification_dialog && (

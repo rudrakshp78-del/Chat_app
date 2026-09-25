@@ -26,7 +26,7 @@ const Message = ({ menu }) => {
       sx={{
         width: "100%",
         boxSizing: "border-box",
-        p: 3,
+        p: { xs: 1.5, sm: 2.5 },
       }}
     >
       <Stack spacing={1.5}>

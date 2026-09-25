@@ -13,9 +13,9 @@ const LoginPage = () => {
         width: "100%",
         maxWidth: 450,
         mx: "auto",
-        mt: 8,
-        px: 3,
-        mb: 5,
+        mt: { xs: 2, md: 4 },
+        px: { xs: 1, sm: 3 },
+        mb: { xs: 2, md: 4 },
       }}
     >
       <Typography variant="h4">

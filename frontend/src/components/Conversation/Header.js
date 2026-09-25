@@ -18,6 +18,7 @@ import { useTheme } from "@mui/material/styles";
 
 import {
   CaretDown,
+  CaretLeft,
   MagnifyingGlass,
   Phone,
   VideoCamera,
@@ -28,7 +29,7 @@ import { useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import useResponsive from "../../hooks/useResponsive";
-import { UpdateSidebarType } from "../../redux/slices/app";
+import { SelectConversation, UpdateSidebarType } from "../../redux/slices/app";
 
 const StyledBadge = styled(Badge)(({ theme }) => ({
   "& .MuiBadge-badge": {
@@ -71,7 +72,7 @@ const Conversation_Menu = [
 
 const Header = () => {
   const theme = useTheme();
-  const isMobile = useResponsive("between", "md", "xs", "sm");
+  const isMobile = useResponsive("down", "md");
 
   const dispatch = useDispatch();
   const { current_conversation } = useSelector(
@@ -123,19 +124,32 @@ const Header = () => {
         sx={{
           width: "100%",
           height: "100%",
-          px: 2,
+          px: { xs: 1, sm: 2 },
           boxSizing: "border-box",
         }}
       >
-        {/* USER */}
+        {/* USER & BACK BUTTON */}
         <Stack
           direction="row"
-          spacing={2}
+          spacing={isMobile ? 1 : 2}
           alignItems="center"
           sx={{
             minWidth: 0,
+            flex: 1,
+            mr: 1,
           }}
         >
+          {isMobile && (
+            <IconButton
+              onClick={() => {
+                dispatch(SelectConversation({ room_id: null }));
+              }}
+              sx={{ p: 0.5 }}
+            >
+              <CaretLeft size={24} />
+            </IconButton>
+          )}
+
           <StyledBadge
             overlap="circular"
             anchorOrigin={{
@@ -152,15 +166,20 @@ const Header = () => {
                   current_conversation?.name || "user"
                 }`
               }
+              sx={{ width: { xs: 38, sm: 40 }, height: { xs: 38, sm: 40 } }}
             />
           </StyledBadge>
 
-          <Stack spacing={0.2}>
-            <Typography variant="subtitle2">
+          <Stack spacing={0.2} sx={{ minWidth: 0, overflow: "hidden" }}>
+            <Typography
+              variant="subtitle2"
+              noWrap
+              sx={{ maxWidth: { xs: 120, sm: 220, md: 300 } }}
+            >
               {current_conversation?.name || "Chat"}
             </Typography>
 
-            <Typography variant="caption">
+            <Typography variant="caption" noWrap>
               {current_conversation?.online ? "Online" : "Offline"}
             </Typography>
           </Stack>
@@ -170,23 +189,24 @@ const Header = () => {
         <Stack
           direction="row"
           alignItems="center"
-          spacing={isMobile ? 1 : 2}
+          spacing={isMobile ? 0.5 : 2}
+          sx={{ flexShrink: 0 }}
         >
-          <IconButton>
-            <VideoCamera />
+          <IconButton sx={{ p: { xs: 0.5, sm: 1 } }}>
+            <VideoCamera size={20} />
           </IconButton>
 
-          <IconButton>
-            <Phone />
+          <IconButton sx={{ p: { xs: 0.5, sm: 1 } }}>
+            <Phone size={20} />
           </IconButton>
 
           {!isMobile && (
-            <IconButton>
-              <MagnifyingGlass />
+            <IconButton sx={{ p: { xs: 0.5, sm: 1 } }}>
+              <MagnifyingGlass size={20} />
             </IconButton>
           )}
 
-          <Divider orientation="vertical" flexItem />
+          <Divider orientation="vertical" flexItem sx={{ my: 1 }} />
 
           {/* MENU BUTTON */}
           <IconButton
@@ -201,8 +221,9 @@ const Header = () => {
               openConversationMenu ? "true" : undefined
             }
             onClick={handleClickConversationMenu}
+            sx={{ p: { xs: 0.5, sm: 1 } }}
           >
-            <CaretDown />
+            <CaretDown size={20} />
           </IconButton>
 
           {/* MENU */}

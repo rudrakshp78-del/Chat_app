@@ -46,7 +46,7 @@ const StartCall = ({ open, handleClose }) => {
       keepMounted
       onClose={handleClose}
       aria-describedby="alert-dialog-slide-description"
-      sx={{ p: 4 }}
+      sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
     >
       <DialogTitle>{"Start New Conversation"}</DialogTitle>
       <Stack p={1} sx={{ width: "100%" }}>

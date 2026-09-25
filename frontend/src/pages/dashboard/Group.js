@@ -29,20 +29,22 @@ const Group = () => {
 
   return (
     <>
-      <Stack direction="row" sx={{ width: "100%" }}>
+      <Stack direction="row" sx={{ width: "100%", height: "100%" }}>
         {/* left */}
         <Box
           sx={{
-            height: "100vh",
+            height: "100%",
             backgroundColor: (theme) =>
               theme.palette.mode === "light"
                 ? "#F8FAFF"
-                : theme.palette.background,
-            width: 320,
-            boxShadow: "0px 0px 2px rgba(0, 0, 0, 0.25)",
+                : theme.palette.background.paper,
+            width: { xs: "100%", md: 320 },
+            boxShadow: { xs: "none", md: "0px 0px 2px rgba(0, 0, 0, 0.25)" },
+            display: "flex",
+            flexDirection: "column",
           }}
         >
-          <Stack p={3} spacing={2} sx={{ maxHeight: "100vh" }}>
+          <Stack p={{ xs: 2, sm: 3 }} spacing={2} sx={{ height: "100%", flex: 1, minHeight: 0 }}>
             <Stack>
               <Typography variant="h5">Groups</Typography>
             </Stack>

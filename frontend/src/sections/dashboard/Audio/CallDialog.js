@@ -310,19 +310,20 @@ const CallDialog = ({ open, handleClose }) => {
         keepMounted
         onClose={handleDisconnect}
         aria-describedby="alert-dialog-slide-description"
+        sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 2 } } }}
       >
         <DialogContent>
-          <Stack direction="row" spacing={24} p={2}>
-            <Stack>
+          <Stack direction="row" spacing={{ xs: 3, sm: 6 }} justifyContent="center" alignItems="center" p={{ xs: 1, sm: 2 }}>
+            <Stack alignItems="center">
               <Avatar
-                sx={{ height: 100, width: 100 }}
+                sx={{ height: { xs: 72, sm: 100 }, width: { xs: 72, sm: 100 } }}
                 src={`https://${S3_BUCKET_NAME}.s3.${AWS_S3_REGION}.amazonaws.com/${call_details?.from_user?.avatar}`}
               />
               <audio id="local-audio" controls={false} />
             </Stack>
-            <Stack>
+            <Stack alignItems="center">
               <Avatar
-                sx={{ height: 100, width: 100 }}
+                sx={{ height: { xs: 72, sm: 100 }, width: { xs: 72, sm: 100 } }}
                 src={`https://${S3_BUCKET_NAME}.s3.${AWS_S3_REGION}.amazonaws.com/${user?.avatar}`}
               />
               <audio id="remote-audio" controls={false} />
