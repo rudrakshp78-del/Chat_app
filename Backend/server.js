@@ -5,7 +5,13 @@ const dns = require("dns");
 const path = require("path");
 
 // Load environment variables
-require("dotenv").config({ path: "./config.env" });
+const fs = require("fs");
+const envPath = path.join(__dirname, "config.env");
+if (fs.existsSync(envPath)) {
+  require("dotenv").config({ path: envPath });
+} else {
+  require("dotenv").config();
+}
 
 const { Server } = require("socket.io");
 const sgMail = require("@sendgrid/mail");
@@ -26,14 +32,20 @@ console.log("API key length:", process.env.SENDGRID_API_KEY?.length);
 console.log("From email:", process.env.SENDGRID_FROM_EMAIL);
 console.log("======================");
 
-sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+if (process.env.SENDGRID_API_KEY) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+}
 
 // ================================
 // DNS
 // ================================
 
-dns.setServers(["8.8.8.8", "8.8.4.4"]);
-dns.setDefaultResultOrder("ipv4first");
+try {
+  dns.setServers(["8.8.8.8", "8.8.4.4"]);
+  dns.setDefaultResultOrder("ipv4first");
+} catch (err) {
+  console.log("DNS config warning:", err.message);
+}
 
 // ================================
 // PROCESS ERROR HANDLERS
@@ -99,8 +111,11 @@ async function startServer() {
 
     const io = new Server(server, {
       cors: {
-        origin: "http://localhost:3000",
+        origin: (origin, callback) => {
+          callback(null, true);
+        },
         methods: ["GET", "POST"],
+        credentials: true,
       },
     });
 
@@ -324,6 +339,12 @@ async function startServer() {
               return;
             }
 
+            // Keep sender's socket_id up-to-date
+            await User.findByIdAndUpdate(from, {
+              socket_id: socket.id,
+              status: "Online",
+            });
+
             // check if there is any existing conversation between these users 
             let existing_conversation = await OneToOneMessage.findOne({
               participants: { $size: 2, $all: [to, from] },
@@ -428,17 +449,31 @@ async function startServer() {
 
             const saved_message = chat.messages[chat.messages.length - 1];
 
-            // emit new_message -> to recipient user
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", {
+            // Keep sender's socket_id up-to-date
+            if (from) {
+              await User.findByIdAndUpdate(from, {
+                socket_id: socket.id,
+                status: "Online",
+              });
+            }
+
+            // emit new_message -> directly to sender's active socket
+            socket.emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
+            // emit new_message -> to sender's other sockets (if any)
+            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
+              io.to(from_user.socket_id).emit("new_message", {
                 conversation_id: chat._id,
                 message: saved_message,
               });
             }
 
-            // emit new_message -> to sender user
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("new_message", {
+            // emit new_message -> to recipient user
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("new_message", {
                 conversation_id: chat._id,
                 message: saved_message,
               });
@@ -495,15 +530,30 @@ async function startServer() {
 
             const saved_message = chat.messages[chat.messages.length - 1];
 
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", {
+            // Keep sender's socket_id up-to-date
+            if (from) {
+              await User.findByIdAndUpdate(from, {
+                socket_id: socket.id,
+                status: "Online",
+              });
+            }
+
+            // emit new_message -> directly to sender's active socket
+            socket.emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
+            // emit new_message -> to sender's other sockets (if any)
+            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
+              io.to(from_user.socket_id).emit("new_message", {
                 conversation_id: chat._id,
                 message: saved_message,
               });
             }
 
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("new_message", {
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("new_message", {
                 conversation_id: chat._id,
                 message: saved_message,
               });

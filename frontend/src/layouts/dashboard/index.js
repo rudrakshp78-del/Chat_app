@@ -77,7 +77,7 @@ const DashboardLayout = () => {
       return;
     }
 
-    if (!socket) {
+    if (!socket.connected) {
       connectSocket(user_id);
     }
 
@@ -88,18 +88,22 @@ const DashboardLayout = () => {
       console.log("NEW MESSAGE:", data);
 
       const current_user_id = user_id || window.localStorage.getItem("user_id");
-      const toId = (message.to?._id || message.to)?.toString();
       const fromId = (message.from?._id || message.from)?.toString();
+      const outgoing = fromId === current_user_id?.toString();
+      const incoming = !outgoing;
 
-      if (current_conversation?.id === data.conversation_id || room_id === data.conversation_id) {
+      if (
+        current_conversation?.id?.toString() === data.conversation_id?.toString() ||
+        room_id?.toString() === data.conversation_id?.toString()
+      ) {
         dispatch(
           AddDirectMessage({
             id: message._id,
             type: "msg",
             subtype: message.type,
             message: message.text,
-            incoming: toId === current_user_id?.toString(),
-            outgoing: fromId === current_user_id?.toString(),
+            incoming,
+            outgoing,
           }),
         );
       }
@@ -110,7 +114,7 @@ const DashboardLayout = () => {
       console.log("START CHAT:", data);
 
       const existing_conversation = conversations.find(
-        (el) => el?.id === data._id,
+        (el) => el?.id?.toString() === data._id?.toString(),
       );
 
       if (existing_conversation) {
@@ -162,22 +166,6 @@ const DashboardLayout = () => {
           message: data.message,
         }),
       );
-
-      socket.on("start_chat", () => {
-        //
-        console.log(data);
-        const existing_conversation = conversations.find(
-          (el) => el.id === data._id,
-        );
-        if (existing_conversation) {
-          //
-          dispatch(UpdateDirectConversation({ conversation: data }));
-        } else {
-          // add direct conversation
-          dispatch(AddDirectConversation({ conversation: data }));
-        }
-        dispatch(SelectConversation({ room_id: data._id }));
-      });
     });
 
     // Cleanup

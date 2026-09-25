@@ -20,7 +20,7 @@ const Conversation = () => {
 
   useEffect(() => {
     if (room_id) {
-      const current = (conversations || []).find((el) => el?.id === room_id);
+      const current = (conversations || []).find((el) => el?.id?.toString() === room_id?.toString());
       if (current) {
         dispatch(SetCurrentConversation(current));
       }

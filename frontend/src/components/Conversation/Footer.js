@@ -194,9 +194,9 @@ const Footer = () => {
   );
   const { user_id } = useSelector((state) => state.auth);
 
-  const currentChat = (conversations || []).find((c) => c?.id === room_id);
-  const to = currentChat?.user_id || current_conversation?.user_id;
-  const from = user_id || window.localStorage.getItem("user_id");
+  const currentChat = (conversations || []).find((c) => c?.id?.toString() === room_id?.toString());
+  const to = (currentChat?.user_id || current_conversation?.user_id)?.toString();
+  const from = (user_id || window.localStorage.getItem("user_id"))?.toString();
 
   const handleSendMessage = () => {
     if (!value.trim()) return;

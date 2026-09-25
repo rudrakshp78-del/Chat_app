@@ -191,6 +191,7 @@ const FriendComponent = ({
   img,
   avatar,
   onChat,
+  handleClose,
 }) => {
   const theme = useTheme();
   const name = `${firstName || ""} ${lastName || ""}`.trim() || "User";
@@ -236,9 +237,26 @@ const FriendComponent = ({
 
         <Stack direction={"row"} spacing={2} alignItems={"center"}>
         <IconButton onClick={() => {
-          const current_user_id = user_id || window.localStorage.getItem("user_id");
-          // start a new converstaion
-          socket.emit("start_conversation", {to: _id, from: current_user_id});
+          const current_user_id = window.localStorage.getItem("user_id");
+          if (!current_user_id) {
+            console.error("User ID not found in localStorage");
+            return;
+          }
+
+          if (!socket.connected) {
+            socket.io.opts.query = { user_id: current_user_id };
+            socket.connect();
+          }
+
+          // start a new conversation
+          socket.emit("start_conversation", { to: _id, from: current_user_id });
+
+          if (typeof handleClose === "function") {
+            handleClose();
+          }
+          if (typeof onChat === "function") {
+            onChat();
+          }
         }}>
           <Chat />
         </IconButton>

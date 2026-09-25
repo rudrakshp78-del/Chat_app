@@ -35,7 +35,7 @@ const UsersList = () => {
   );
 };
 
-const FriendsList = () => {
+const FriendsList = ({ handleClose }) => {
   const dispatch = useDispatch();
 
   const friends = useSelector((state) => state.app.friends);
@@ -60,6 +60,7 @@ const FriendsList = () => {
         <FriendComponent
           key={el._id}
           {...el}
+          handleClose={handleClose}
         />
       ))}
     </>
@@ -118,7 +119,7 @@ const Friends = ({ open, handleClose }) => {
                   return <UsersList />;
 
                 case 1: // display friends in this list
-                  return <FriendsList />;
+                  return <FriendsList handleClose={handleClose} />;
 
                 case 2: // display request in this list
                   return <FriendRequestsList />;

@@ -21,12 +21,12 @@ const slice = createSlice({
       const current_user_id = window.localStorage.getItem("user_id");
       const list = (action.payload.conversations || []).map((el) => {
         const this_user = el.participants.find(
-          (elm) => elm._id?.toString() !== current_user_id
+          (elm) => (elm._id || elm)?.toString() !== current_user_id?.toString()
         );
         const lastMsg = el.messages && el.messages.length > 0 ? el.messages[el.messages.length - 1] : null;
         return {
           id: el._id,
-          user_id: this_user?._id,
+          user_id: (this_user?._id || this_user)?.toString(),
           name: this_user ? `${this_user.firstName || ""} ${this_user.lastName || ""}`.trim() : "Unknown",
           online: this_user?.status === "Online",
           img: this_user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${this_user?.firstName || "user"}`,
@@ -46,18 +46,18 @@ const slice = createSlice({
       if (!this_conversation) return;
       state.direct_chat.conversations = state.direct_chat.conversations.map(
         (el) => {
-          if (el?.id !== this_conversation._id) {
+          if (el?.id?.toString() !== this_conversation._id?.toString()) {
             return el;
           } else {
             const user = this_conversation.participants?.find(
-              (elm) => elm._id?.toString() !== current_user_id,
+              (elm) => (elm._id || elm)?.toString() !== current_user_id?.toString(),
             );
             const lastMsg = this_conversation.messages && this_conversation.messages.length > 0
               ? this_conversation.messages[this_conversation.messages.length - 1]
               : null;
             return {
               id: this_conversation._id,
-              user_id: user?._id,
+              user_id: (user?._id || user)?.toString() || el.user_id,
               name: user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : el.name,
               online: user?.status === "Online",
               img: user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.firstName || "user"}`,
@@ -76,11 +76,11 @@ const slice = createSlice({
       if (!this_conversation) return;
 
       const exists = state.direct_chat.conversations.some(
-        (el) => el.id === this_conversation._id
+        (el) => el.id?.toString() === this_conversation._id?.toString()
       );
 
       const user = this_conversation.participants?.find(
-        (elm) => elm._id?.toString() !== current_user_id,
+        (elm) => (elm._id || elm)?.toString() !== current_user_id?.toString(),
       );
 
       const lastMsg = this_conversation.messages && this_conversation.messages.length > 0
@@ -89,7 +89,7 @@ const slice = createSlice({
 
       const newConv = {
         id: this_conversation._id,
-        user_id: user?._id,
+        user_id: (user?._id || user)?.toString(),
         name: user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : "Unknown",
         online: user?.status === "Online",
         img: user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.firstName || "user"}`,
@@ -103,9 +103,10 @@ const slice = createSlice({
         state.direct_chat.conversations.push(newConv);
       } else {
         state.direct_chat.conversations = state.direct_chat.conversations.map(
-          (el) => el.id === this_conversation._id ? newConv : el
+          (el) => el.id?.toString() === this_conversation._id?.toString() ? newConv : el
         );
       }
+      state.direct_chat.current_conversation = newConv;
     },
     setCurrentConversation(state, action) {
       state.direct_chat.current_conversation = action.payload;
@@ -114,15 +115,16 @@ const slice = createSlice({
       const current_user_id = window.localStorage.getItem("user_id");
       const messages = action.payload.messages || [];
       const formatted_messages = messages.map((el) => {
-        const toId = (el.to?._id || el.to)?.toString();
         const fromId = (el.from?._id || el.from)?.toString();
+        const outgoing = fromId === current_user_id?.toString();
+        const incoming = !outgoing;
         return {
           id: el._id,
           type: "msg",
           subtype: el.type || "Text",
           message: el.text,
-          incoming: toId === current_user_id,
-          outgoing: fromId === current_user_id,
+          incoming,
+          outgoing,
         };
       });
       state.direct_chat.current_messages = formatted_messages;

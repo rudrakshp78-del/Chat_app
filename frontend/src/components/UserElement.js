@@ -90,7 +90,12 @@ const UserElement = ({ img, firstName, lastName, online, _id }) => {
         <Stack direction={"row"} spacing={2} alignItems={"center"}>
           <Button
             onClick={() => {
-              socket.emit("friend_request", { to: _id, from: user_id }, () => {
+              const current_user_id = window.localStorage.getItem("user_id");
+              if (!current_user_id) {
+                console.error("User ID not found in localStorage");
+                return;
+              }
+              socket.emit("friend_request", { to: _id, from: current_user_id }, () => {
                 alert("request sent");
               });
             }}
@@ -174,6 +179,7 @@ const FriendElement = ({
   missed,
   online,
   _id,
+  handleClose,
 }) => {
   const theme = useTheme();
 
@@ -215,8 +221,16 @@ const FriendElement = ({
         <Stack direction={"row"} spacing={2} alignItems={"center"}>
           <IconButton
             onClick={() => {
+              const current_user_id = window.localStorage.getItem("user_id");
+              if (!current_user_id) {
+                console.error("User ID not found in localStorage");
+                return;
+              }
               // start a new conversation
-              socket.emit("start_conversation", { to: _id, from: user_id });
+              socket.emit("start_conversation", { to: _id, from: current_user_id });
+              if (typeof handleClose === "function") {
+                handleClose();
+              }
             }}
           >
             <Chat />
