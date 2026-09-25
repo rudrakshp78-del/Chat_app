@@ -110,6 +110,11 @@ export function ToggleSidebar() {
     dispatch(slice.actions.toggleSideBar());
   };
 }
+export function CloseSidebar() {
+  return async (dispatch, getState) => {
+    dispatch(slice.actions.toggleSideBar());
+  };
+}
 export function UpdateSidebarType(type) {
   return async (dispatch, getState) => {
     dispatch(slice.actions.updateSideBarType({ type }));
@@ -261,37 +266,10 @@ export const FetchUserProfile = () => {
 };
 export const UpdateUserProfile = (formValues) => {
   return async (dispatch, getState) => {
-    const file = formValues.avatar;
-
-    const key = v4();
-
-    try{
-      S3.getSignedUrl(
-        "putObject",
-        { Bucket: S3_BUCKET_NAME, Key: key, ContentType: `image/${file.type}` },
-        async (_err, presignedURL) => {
-          await fetch(presignedURL, {
-            method: "PUT",
-  
-            body: file,
-  
-            headers: {
-              "Content-Type": file.type,
-            },
-          });
-        }
-      );
-    }
-    catch(error) {
-      console.log(error);
-    }
-
-    
-
     axios
       .patch(
         "/user/update-me",
-        { ...formValues, avatar: key },
+        formValues,
         {
           headers: {
             "Content-Type": "application/json",

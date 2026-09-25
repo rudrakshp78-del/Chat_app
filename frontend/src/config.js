@@ -4,7 +4,7 @@ import { enUS, frFR, zhCN, viVN, arSD } from '@mui/material/locale';
 // routes
 import { PATH_DASHBOARD } from "./routes/paths";
 
-export const BASE_URL = "http://localhost:5000";
+export const BASE_URL = process.env.REACT_APP_BASE_URL || "http://localhost:5000";
 
 
 export const S3_BUCKET_NAME = process.env.REACT_APP_S3_BUCKET_NAME || 'rudrakshp78';

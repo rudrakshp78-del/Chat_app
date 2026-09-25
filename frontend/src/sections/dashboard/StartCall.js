@@ -29,7 +29,7 @@ const StartCall = ({ open, handleClose }) => {
     dispatch(FetchAllUsers());
   }, []);
 
-  console.log(CallList, all_users, "Call List Info");
+  console.log(all_users, "Call List Info");
 
   const list = all_users.map((el) => ({
     id: el?._id,

@@ -32,10 +32,10 @@ import {
 
 import { useDispatch } from "react-redux";
 
-// import {
-//   CloseSidebar,
-//   UpdateSidebarType,
-// } from "../redux/slices/app";
+import {
+  CloseSidebar,
+  UpdateSidebarType,
+} from "../redux/slices/app";
 
 import AntSwitch from "./AntSwitch";
 import { faker } from "@faker-js/faker";
