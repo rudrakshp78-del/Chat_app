@@ -77,7 +77,7 @@ const StarredMessages = () => {
           p={3}
           spacing={3}
         >
-            <Message />
+            <Message starredOnly={true} />
         </Stack>
       </Stack>
     </Box>

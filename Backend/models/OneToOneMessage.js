@@ -19,7 +19,7 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       type: {
         type: String,
-        enum: ["Text", "Media", "Document", "Link"],
+        enum: ["Text", "Media", "Document", "Link", "Reply"],
       },
       created_at: {
         type: Date,
@@ -30,6 +30,21 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       file: {
         type: String,
+      },
+      reply: {
+        type: String,
+      },
+      starred: {
+        type: Boolean,
+        default: false,
+      },
+      reaction: {
+        type: String,
+        default: "",
+      },
+      deleted: {
+        type: Boolean,
+        default: false,
       },
     },
   ],

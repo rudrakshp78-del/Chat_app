@@ -19,6 +19,9 @@ import {
   UpdateDirectConversation,
   AddDirectConversation,
   AddDirectMessage,
+  DeleteDirectMessage,
+  ReactDirectMessage,
+  StarDirectMessage,
 } from "../../redux/slices/Conversation";
 
 import {
@@ -120,11 +123,34 @@ const DashboardLayout = () => {
             type: "msg",
             subtype: message.type,
             message: message.text,
+            file: message.file,
+            reply: message.reply || "",
+            starred: !!message.starred,
+            reaction: message.reaction || "",
+            deleted: !!message.deleted,
             incoming,
             outgoing,
           }),
         );
       }
+    });
+
+    // Message Deleted
+    socket.on("message_deleted", (data) => {
+      console.log("MESSAGE DELETED:", data);
+      dispatch(DeleteDirectMessage(data));
+    });
+
+    // Message Reacted
+    socket.on("message_reacted", (data) => {
+      console.log("MESSAGE REACTED:", data);
+      dispatch(ReactDirectMessage(data));
+    });
+
+    // Message Starred
+    socket.on("message_starred", (data) => {
+      console.log("MESSAGE STARRED:", data);
+      dispatch(StarDirectMessage(data));
     });
 
     // Start chat
@@ -205,6 +231,9 @@ const DashboardLayout = () => {
       socket?.off("request_sent");
       socket?.off("start_chat");
       socket?.off("new_message");
+      socket?.off("message_deleted");
+      socket?.off("message_reacted");
+      socket?.off("message_starred");
       socket?.off("audio_call_notification");
       socket?.off("video_call_notification");
     };

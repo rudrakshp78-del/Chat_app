@@ -11,6 +11,7 @@ const initialState = {
     current_messages: [],
     search_query: "",
     open_search: false,
+    replying_to: null,
   },
   group_chat: {},
 };
@@ -134,6 +135,11 @@ const slice = createSlice({
           type: "msg",
           subtype: el.type || "Text",
           message: el.text,
+          file: el.file,
+          reply: el.reply || "",
+          starred: !!el.starred,
+          reaction: el.reaction || "",
+          deleted: !!el.deleted,
           incoming,
           outgoing,
         };
@@ -149,6 +155,36 @@ const slice = createSlice({
       if (!exists) {
         state.direct_chat.current_messages.push(msg);
       }
+    },
+    setReplyingTo(state, action) {
+      state.direct_chat.replying_to = action.payload;
+    },
+    clearReplyingTo(state) {
+      state.direct_chat.replying_to = null;
+    },
+    deleteDirectMessage(state, action) {
+      const { message_id } = action.payload;
+      state.direct_chat.current_messages = state.direct_chat.current_messages.filter(
+        (m) => m.id?.toString() !== message_id?.toString()
+      );
+    },
+    reactDirectMessage(state, action) {
+      const { message_id, reaction } = action.payload;
+      state.direct_chat.current_messages = state.direct_chat.current_messages.map((m) => {
+        if (m.id?.toString() === message_id?.toString()) {
+          return { ...m, reaction };
+        }
+        return m;
+      });
+    },
+    starDirectMessage(state, action) {
+      const { message_id, starred } = action.payload;
+      state.direct_chat.current_messages = state.direct_chat.current_messages.map((m) => {
+        if (m.id?.toString() === message_id?.toString()) {
+          return { ...m, starred };
+        }
+        return m;
+      });
     },
     setSearchQuery(state, action) {
       state.direct_chat.search_query = action.payload.query;
@@ -242,6 +278,36 @@ export const ToggleSearch = () => {
 export const CloseSearch = () => {
   return async (dispatch) => {
     dispatch(slice.actions.closeSearch());
+  };
+};
+
+export const SetReplyingTo = (message) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.setReplyingTo(message));
+  };
+};
+
+export const ClearReplyingTo = () => {
+  return async (dispatch) => {
+    dispatch(slice.actions.clearReplyingTo());
+  };
+};
+
+export const DeleteDirectMessage = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.deleteDirectMessage(payload));
+  };
+};
+
+export const ReactDirectMessage = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.reactDirectMessage(payload));
+  };
+};
+
+export const StarDirectMessage = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.starDirectMessage(payload));
   };
 };
 

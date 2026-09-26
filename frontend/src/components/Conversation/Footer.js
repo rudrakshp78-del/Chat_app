@@ -8,6 +8,7 @@ import {
   Stack,
   TextField,
   Tooltip,
+  Typography,
 } from "@mui/material";
 
 import {
@@ -19,17 +20,19 @@ import {
   Smiley,
   Sticker,
   User,
+  X,
 } from "phosphor-react";
 
-import { styled, useTheme } from "@mui/material/styles";
+import { styled, useTheme, alpha } from "@mui/material/styles";
 
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 
 import { useSearchParams } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import useResponsive from "../../hooks/useResponsive";
 import { socket } from "../../socket";
+import { ClearReplyingTo } from "../../redux/slices/Conversation";
 
 const StyledInput = styled(TextField)(() => ({
   "& .MuiInputBase-input": {
@@ -185,11 +188,12 @@ const Footer = () => {
 
   const [searchParams] = useSearchParams();
 
+  const dispatch = useDispatch();
   const [openPicker, setOpenPicker] = React.useState(false);
   const [value, setValue] = React.useState("");
 
   const { room_id } = useSelector((state) => state.app);
-  const { conversations, current_conversation } = useSelector(
+  const { conversations, current_conversation, replying_to } = useSelector(
     (state) => state.conversation.direct_chat
   );
   const { user_id } = useSelector((state) => state.auth);
@@ -210,8 +214,15 @@ const Footer = () => {
       from,
       message: value.trim(),
       conversation_id: room_id,
-      type: "Text",
+      type: replying_to ? "Reply" : "Text",
+      reply: replying_to
+        ? replying_to.message || (replying_to.subtype === "img" ? "Photo" : "Attachment")
+        : "",
     });
+
+    if (replying_to) {
+      dispatch(ClearReplyingTo());
+    }
 
     setValue("");
     setOpenPicker(false);
@@ -234,6 +245,49 @@ const Footer = () => {
         position: "relative",
       }}
     >
+      {/* REPLY PREVIEW BAR */}
+      {replying_to && (
+        <Box
+          sx={{
+            px: { xs: 1.5, sm: 2 },
+            py: 1,
+            backgroundColor:
+              theme.palette.mode === "light"
+                ? alpha(theme.palette.primary.main, 0.08)
+                : alpha(theme.palette.primary.main, 0.16),
+            borderTop: `1px solid ${theme.palette.divider}`,
+            borderLeft: `4px solid ${theme.palette.primary.main}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <Box sx={{ minWidth: 0, flexGrow: 1, pr: 1 }}>
+            <Typography
+              variant="caption"
+              sx={{ fontWeight: 600, color: theme.palette.primary.main, display: "block" }}
+            >
+              Replying to {replying_to.incoming ? (current_conversation?.name || "User") : "yourself"}
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "text.secondary",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+                fontSize: "0.85rem",
+              }}
+            >
+              {replying_to.message || (replying_to.subtype === "img" ? "Photo" : "Attachment")}
+            </Typography>
+          </Box>
+          <IconButton size="small" onClick={() => dispatch(ClearReplyingTo())}>
+            <X size={16} />
+          </IconButton>
+        </Box>
+      )}
+
       {/* EMOJI PICKER */}
       {openPicker && (
         <Box

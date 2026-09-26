@@ -11,7 +11,7 @@ import {
   DocMsg,
 } from "./MsgType";
 
-const Message = ({ menu }) => {
+const Message = ({ menu, starredOnly = false }) => {
   const { current_messages, search_query } = useSelector(
     (state) => state.conversation.direct_chat
   );
@@ -19,18 +19,24 @@ const Message = ({ menu }) => {
 
   const query = (search_query || "").trim().toLowerCase();
 
-  const displayedMessages = query
-    ? (current_messages || []).filter((el) => {
-        if (!el?.message) return false;
-        return el.message.toLowerCase().includes(query);
-      })
-    : current_messages || [];
+  let displayedMessages = current_messages || [];
+
+  if (starredOnly) {
+    displayedMessages = displayedMessages.filter((el) => !!el.starred);
+  }
+
+  if (query) {
+    displayedMessages = displayedMessages.filter((el) => {
+      if (!el?.message) return false;
+      return el.message.toLowerCase().includes(query);
+    });
+  }
 
   useEffect(() => {
-    if (!query) {
+    if (!query && !starredOnly) {
       messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [current_messages, query]);
+  }, [current_messages, query, starredOnly]);
 
   return (
     <Box
@@ -73,6 +79,12 @@ const Message = ({ menu }) => {
           <Box sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" color="text.secondary">
               No messages found matching "{search_query}"
+            </Typography>
+          </Box>
+        ) : starredOnly ? (
+          <Box sx={{ textAlign: "center", py: 4, px: 2 }}>
+            <Typography variant="body2" color="text.secondary">
+              No starred messages yet. Tap the 3 dots on any message and select "Star message" to save it here.
             </Typography>
           </Box>
         ) : (

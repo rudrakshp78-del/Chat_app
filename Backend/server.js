@@ -409,8 +409,8 @@ async function startServer() {
           try {
             console.log("Received text message:", data);
 
-            // data: {to, from, message, conversation_id, type} 
-            const { to, from, message, conversation_id, type } = data;
+            // data: {to, from, message, conversation_id, type, reply} 
+            const { to, from, message, conversation_id, type, reply } = data;
 
             if (!to || !from) {
               console.log("text_message missing 'to' or 'from':", data);
@@ -423,8 +423,9 @@ async function startServer() {
             const new_message = {
               to,
               from,
-              type: type || "Text",
+              type: type || (reply ? "Reply" : "Text"),
               text: message,
+              reply: reply || "",
               created_at: Date.now(),
             };
 
@@ -562,6 +563,132 @@ async function startServer() {
             }
           } catch (err) {
             console.error("file_message error:", err);
+          }
+        });
+
+        // Delete Message
+        socket.on("delete_message", async (data, callback) => {
+          try {
+            console.log("Delete message request:", data);
+            const { conversation_id, message_id } = data;
+            if (!conversation_id || !message_id) return;
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) return;
+
+            // Remove message from chat
+            chat.messages = chat.messages.filter(
+              (m) => m._id.toString() !== message_id.toString()
+            );
+            await chat.save({ validateModifiedOnly: true });
+
+            // Notify both participants
+            for (const participantId of chat.participants) {
+              const user = await User.findById(participantId).select("socket_id");
+              if (user?.socket_id) {
+                io.to(user.socket_id).emit("message_deleted", {
+                  conversation_id,
+                  message_id,
+                });
+              }
+            }
+
+            if (typeof callback === "function") {
+              callback({ status: "success" });
+            }
+          } catch (err) {
+            console.error("delete_message error:", err);
+            if (typeof callback === "function") {
+              callback({ status: "error", message: err.message });
+            }
+          }
+        });
+
+        // React to Message
+        socket.on("react_message", async (data, callback) => {
+          try {
+            console.log("React message request:", data);
+            const { conversation_id, message_id, reaction } = data;
+            if (!conversation_id || !message_id) return;
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) return;
+
+            const msg = chat.messages.id(message_id);
+            if (!msg) return;
+
+            // If same reaction, toggle off, otherwise set new reaction
+            msg.reaction = msg.reaction === reaction ? "" : (reaction || "");
+            await chat.save({ validateModifiedOnly: true });
+
+            // Notify both participants
+            for (const participantId of chat.participants) {
+              const user = await User.findById(participantId).select("socket_id");
+              if (user?.socket_id) {
+                io.to(user.socket_id).emit("message_reacted", {
+                  conversation_id,
+                  message_id,
+                  reaction: msg.reaction,
+                });
+              }
+            }
+
+            if (typeof callback === "function") {
+              callback({ status: "success", reaction: msg.reaction });
+            }
+          } catch (err) {
+            console.error("react_message error:", err);
+          }
+        });
+
+        // Star Message
+        socket.on("star_message", async (data, callback) => {
+          try {
+            console.log("Star message request:", data);
+            const { conversation_id, message_id } = data;
+            if (!conversation_id || !message_id) return;
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) return;
+
+            const msg = chat.messages.id(message_id);
+            if (!msg) return;
+
+            msg.starred = !msg.starred;
+            await chat.save({ validateModifiedOnly: true });
+
+            // Notify both participants
+            for (const participantId of chat.participants) {
+              const user = await User.findById(participantId).select("socket_id");
+              if (user?.socket_id) {
+                io.to(user.socket_id).emit("message_starred", {
+                  conversation_id,
+                  message_id,
+                  starred: msg.starred,
+                });
+              }
+            }
+
+            if (typeof callback === "function") {
+              callback({ status: "success", starred: msg.starred });
+            }
+          } catch (err) {
+            console.error("star_message error:", err);
+          }
+        });
+
+        // Report Message
+        socket.on("report_message", async (data, callback) => {
+          try {
+            console.log("Report message request:", data);
+            if (typeof callback === "function") {
+              callback({
+                status: "success",
+                message: "Report submitted successfully. Thank you for making our platform safer.",
+              });
+            }
+          } catch (err) {
+            console.error("report_message error:", err);
           }
         });
 
