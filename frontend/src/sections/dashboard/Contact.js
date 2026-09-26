@@ -16,6 +16,7 @@ import {
   DialogTitle,
 } from "@mui/material";
 import { faker } from "@faker-js/faker";
+import { getMockAvatar } from "../../utils/getAvatarUrl";
 import {
   Bell,
   CaretRight,
@@ -201,8 +202,12 @@ const Contact = () => {
           </Stack>
           <Stack direction={"row"} alignItems="center" spacing={2}>
             {[1, 2, 3].map((el) => (
-              <Box>
-                <img src={faker.image.city()} alt={faker.internet.userName()} />
+              <Box key={el}>
+                <img
+                  src={getMockAvatar(`city-${el}`)}
+                  alt={faker.internet.userName()}
+                  style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }}
+                />
               </Box>
             ))}
           </Stack>
@@ -241,7 +246,7 @@ const Contact = () => {
           <Divider />
           <Typography variant="body2">1 group in common</Typography>
           <Stack direction="row" alignItems={"center"} spacing={2}>
-            <Avatar src={faker.image.imageUrl()} alt={faker.name.fullName()} />
+            <Avatar src={getMockAvatar("camels-gang")} alt={faker.name.fullName()} />
             <Stack direction="column" spacing={0.5}>
               <Typography variant="subtitle2">Camel’s Gang</Typography>
               <Typography variant="caption">

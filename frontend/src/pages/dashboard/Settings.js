@@ -21,11 +21,17 @@ import {
 } from "phosphor-react";
 import { faker } from "@faker-js/faker";
 import { useNavigate } from "react-router-dom";
+import { useSelector } from "react-redux";
 import Shortcuts from "../../sections/dashboard/settings/Shortcuts";
+import getAvatarUrl from "../../utils/getAvatarUrl";
 
 const Settings = () => {
   const theme = useTheme();
   const navigate = useNavigate();
+  const { user } = useSelector((state) => state.app);
+  const fullName = user?.firstName
+    ? `${user.firstName} ${user.lastName || ""}`.trim()
+    : "User";
 
   const [openShortcuts, setOpenShortcuts] = useState(false);
 
@@ -112,16 +118,27 @@ const Settings = () => {
               <Typography variant="h6">Settings</Typography>
             </Stack>
             {/* profile */}
-            <Stack direction={"row"} spacing={3}>
+            <Stack direction={"row"} spacing={3} alignItems="center">
               <Avatar
                 sx={{ width: 56, height: 56 }}
-                src={faker.image.avatar()}
-                alt={faker.name.fullName}
-              />
+                src={getAvatarUrl(user?.avatar, fullName)}
+                alt={fullName}
+                imgProps={{
+                  onError: (e) => {
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                      fullName || "User"
+                    )}`;
+                  },
+                }}
+              >
+                {(fullName || "U")[0]}
+              </Avatar>
               <Stack spacing={0.5}>
-                <Typography variant="article">{faker.name.fullName}</Typography>
-                <Typography variant="article">
-                  {faker.random.words()}
+                <Typography variant="subtitle1" fontWeight={600}>
+                  {fullName}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  {user?.about || "Available"}
                 </Typography>
               </Stack>
             </Stack>

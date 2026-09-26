@@ -14,6 +14,7 @@ import useResponsive from "../../hooks/useResponsive";
 import { useDispatch } from "react-redux";
 import { UpdateSidebarType } from "../../redux/slices/app";
 import { faker } from "@faker-js/faker";
+import { getMockAvatar } from "../../utils/getAvatarUrl";
 import { DocMsg, LinkMsg } from "./Conversation";
 import { Shared_docs, Shared_links } from "../../data";
 
@@ -82,10 +83,16 @@ const Media = () => {
                 return (
                   <Grid container spacing={2}>
                     {[0, 1, 2, 3, 4, 5, 6].map((el) => (
-                      <Grid item xs={4}>
+                      <Grid item xs={4} key={el}>
                         <img
-                          src={faker.image.city()}
+                          src={getMockAvatar(`shared-city-${el}`)}
                           alt={faker.internet.userName()}
+                          style={{
+                            width: "100%",
+                            height: "80px",
+                            objectFit: "cover",
+                            borderRadius: "8px",
+                          }}
                         />
                       </Grid>
                     ))}

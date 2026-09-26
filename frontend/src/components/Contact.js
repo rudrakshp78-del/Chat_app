@@ -41,8 +41,7 @@ import { StartAudioCall } from "../redux/slices/audioCall";
 import { StartVideoCall } from "../redux/slices/videoCall";
 
 import AntSwitch from "./AntSwitch";
-import { faker } from "@faker-js/faker";
-import getAvatarUrl from "../utils/getAvatarUrl";
+import getAvatarUrl, { getMockAvatar } from "../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transtion(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />
@@ -358,8 +357,12 @@ const Contact = () => {
             alignItems="center"
           >
             {[1, 2, 3].map((el) => (
-             <Box>
-              <img src={faker.image.avatar()} alt={faker.name.fullName()} />
+             <Box key={el}>
+              <img
+                src={getMockAvatar(`media-${el}`)}
+                alt={`media-${el}`}
+                style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover" }}
+              />
              </Box>
             ))}
           </Stack>

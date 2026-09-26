@@ -46,34 +46,37 @@ const Nav_Setting = [
   },
 ];
 
+const getMockAvatar = (seed) =>
+  `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed || "user")}`;
+
 const MembersList = [
   {
     id: 0,
-    img: faker.image.avatar(),
+    img: getMockAvatar("member_0"),
     name: faker.name.fullName(),
     online: true,
   },
   {
     id: 1,
-    img: faker.image.avatar(),
+    img: getMockAvatar("member_1"),
     name: faker.name.fullName(),
     online: false,
   },
   {
     id: 2,
-    img: faker.image.avatar(),
+    img: getMockAvatar("member_2"),
     name: faker.name.fullName(),
     online: true,
   },
   {
     id: 3,
-    img: faker.image.avatar(),
+    img: getMockAvatar("member_3"),
     name: faker.name.fullName(),
     online: true,
   },
   {
     id: 4,
-    img: faker.image.avatar(),
+    img: getMockAvatar("member_4"),
     name: faker.name.fullName(),
     online: false,
   },
@@ -82,35 +85,35 @@ const MembersList = [
 const CallLogs = [
   {
     id: 0,
-    img: faker.image.avatar(),
+    img: getMockAvatar("call_0"),
     name: faker.name.fullName(),
     missed: false,
     incoming: true,
   },
   {
     id: 1,
-    img: faker.image.avatar(),
+    img: getMockAvatar("call_1"),
     name: faker.name.fullName(),
     missed: true,
     incoming: true,
   },
   {
     id: 2,
-    img: faker.image.avatar(),
+    img: getMockAvatar("call_2"),
     name: faker.name.fullName(),
     missed: true,
     incoming: false,
   },
   {
     id: 3,
-    img: faker.image.avatar(),
+    img: getMockAvatar("call_3"),
     name: faker.name.fullName(),
     missed: false,
     incoming: false,
   },
   {
     id: 4,
-    img: faker.image.avatar(),
+    img: getMockAvatar("call_4"),
     name: faker.name.fullName(),
     missed: true,
     incoming: true,
@@ -120,7 +123,7 @@ const CallLogs = [
 const ChatList = [
   {
     id: 0,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_0"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "9:36",
@@ -130,7 +133,7 @@ const ChatList = [
   },
   {
     id: 1,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_1"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "12:02",
@@ -140,7 +143,7 @@ const ChatList = [
   },
   {
     id: 2,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_2"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "10:35",
@@ -150,7 +153,7 @@ const ChatList = [
   },
   {
     id: 3,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_3"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "04:00",
@@ -160,7 +163,7 @@ const ChatList = [
   },
   {
     id: 4,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_4"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "08:42",
@@ -170,7 +173,7 @@ const ChatList = [
   },
   {
     id: 5,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_5"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "08:42",
@@ -180,7 +183,7 @@ const ChatList = [
   },
   {
     id: 6,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_6"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "08:42",
@@ -190,7 +193,7 @@ const ChatList = [
   },
   {
     id: 7,
-    img: faker.image.avatar(),
+    img: getMockAvatar("chat_7"),
     name: faker.name.firstName(),
     msg: faker.music.songName(),
     time: "08:42",

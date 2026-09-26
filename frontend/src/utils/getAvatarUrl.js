@@ -1,9 +1,13 @@
 import { AWS_S3_REGION, S3_BUCKET_NAME } from "../config";
 
+export const getMockAvatar = (seed) =>
+  `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(seed || "user")}`;
+
 /**
  * Returns a valid, loadable avatar image URL.
  * Falls back to DiceBear SVG avatars if an image is missing, relative/unhosted,
- * or pointing to an unconfigured AWS S3 bucket, preventing ERR_NAME_NOT_RESOLVED errors.
+ * pointing to cloudflare-ipfs (which fails DNS resolution in many regions), or
+ * pointing to an unconfigured AWS S3 bucket, preventing ERR_NAME_NOT_RESOLVED errors.
  */
 export const getAvatarUrl = (avatar, name) => {
   const fallbackSeed = encodeURIComponent(name || "User");
@@ -14,6 +18,11 @@ export const getAvatarUrl = (avatar, name) => {
   }
 
   const trimmed = avatar.trim();
+
+  // If pointing to cloudflare-ipfs.com (which has dead DNS / blocked in many regions), use DiceBear
+  if (trimmed.includes("cloudflare-ipfs.com") || trimmed.includes("ipfs/")) {
+    return dicebearUrl;
+  }
 
   // If already a complete URL or data URI, return as-is
   if (
@@ -40,7 +49,9 @@ export const getAvatarUrl = (avatar, name) => {
   }
 
   // Fallback to DiceBear with avatar name as seed
-  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(trimmed.replace(/\.[^/.]+$/, "") || name || "User")}`;
+  return `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+    trimmed.replace(/\.[^/.]+$/, "") || name || "User"
+  )}`;
 };
 
 export default getAvatarUrl;

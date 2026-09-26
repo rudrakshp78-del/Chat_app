@@ -13,6 +13,7 @@ import { CaretLeft } from "phosphor-react";
 import { useDispatch } from "react-redux";
 import { UpdateSidebarType } from "../redux/slices/app";
 import { faker } from "@faker-js/faker";
+import { getMockAvatar } from "../utils/getAvatarUrl";
 import { SHARED_LINKS } from "../data";
 import { SHARED_DOCS } from "../data";
 import { LinkMsg, DocMsg } from "./Conversation/MsgType";
@@ -102,7 +103,7 @@ const SharedMessages = () => {
                     {[0, 1, 2, 3, 4, 5, 6].map((el) => (
                       <Grid item xs={4} key={el}>
                         <img
-                          src={faker.image.avatar()}
+                          src={getMockAvatar(`shared-${el}`)}
                           alt={faker.name.fullName()}
                           style={{
                             width: "100%",

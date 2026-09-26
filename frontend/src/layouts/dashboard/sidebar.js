@@ -16,13 +16,13 @@ import useSettings from "../../hooks/useSettings";
 import AntSwitch from "../../components/AntSwitch";
 import { faker } from "@faker-js/faker";
 import { useNavigate } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { LogoutUser } from "../../redux/slices/auth";
+import getAvatarUrl from "../../utils/getAvatarUrl";
 
 const SideBar = () => {
   const dispatch = useDispatch();
-
-  const avatarUrl = "https://example.com/avatar.jpg";
+  const { user } = useSelector((state) => state.app);
 
   const [selected, setSelected] = useState(0);
 
@@ -248,13 +248,22 @@ const SideBar = () => {
               aria-haspopup="true"
               aria-expanded={open ? "true" : undefined}
               onClick={handleClick}
-              src={faker.image.avatar()}
+              src={getAvatarUrl(user?.avatar, user?.firstName)}
               alt="User avatar"
+              imgProps={{
+                onError: (e) => {
+                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                    user?.firstName || "User"
+                  )}`;
+                },
+              }}
               sx={{
                 width: 40,
                 height: 40,
               }}
-            />
+            >
+              {(user?.firstName || "U")[0]}
+            </Avatar>
             <Menu
               id="basic-menu"
               anchorEl={anchorEl}
