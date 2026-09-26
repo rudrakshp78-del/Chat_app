@@ -30,15 +30,19 @@ import {
   X,
 } from "phosphor-react";
 
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
 import {
   CloseSidebar,
   UpdateSidebarType,
+  showSnackbar,
 } from "../redux/slices/app";
+import { StartAudioCall } from "../redux/slices/audioCall";
+import { StartVideoCall } from "../redux/slices/videoCall";
 
 import AntSwitch from "./AntSwitch";
 import { faker } from "@faker-js/faker";
+import getAvatarUrl from "../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transtion(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />
@@ -101,20 +105,87 @@ const DeleteDialog = (open, handleClose) => {
 };
 
 const Contact = () => {
-  
   const theme = useTheme();
   const dispatch = useDispatch();
+
+  const { current_conversation, conversations } = useSelector(
+    (state) => state.conversation.direct_chat
+  );
+  const { room_id } = useSelector((state) => state.app);
+
+  const current_user_id =
+    useSelector((state) => state.auth?.user_id) ||
+    (typeof window !== "undefined" ? window.localStorage.getItem("user_id") : null);
+
+  const targetUserId = React.useMemo(() => {
+    if (current_conversation?.user_id) return current_conversation.user_id;
+
+    if (
+      current_conversation?._id &&
+      current_conversation._id.toString() !== current_user_id?.toString() &&
+      current_conversation._id.toString() !== room_id?.toString()
+    ) {
+      return current_conversation._id.toString();
+    }
+
+    if (Array.isArray(current_conversation?.participants)) {
+      const other = current_conversation.participants.find(
+        (p) => (p?._id || p)?.toString() !== current_user_id?.toString()
+      );
+      if (other) return (other?._id || other)?.toString();
+    }
+
+    const found = conversations?.find(
+      (c) => c?.id?.toString() === room_id?.toString()
+    );
+    if (found?.user_id) return found.user_id;
+    if (Array.isArray(found?.participants)) {
+      const other = found.participants.find(
+        (p) => (p?._id || p)?.toString() !== current_user_id?.toString()
+      );
+      if (other) return (other?._id || other)?.toString();
+    }
+
+    return room_id || null;
+  }, [current_conversation, conversations, room_id, current_user_id]);
+
+  const handleAudioCall = () => {
+    if (!targetUserId) {
+      dispatch(
+        showSnackbar({
+          severity: "warning",
+          message: "Please select a conversation to start a call",
+        })
+      );
+      return;
+    }
+    dispatch(StartAudioCall(targetUserId));
+  };
+
+  const handleVideoCall = () => {
+    if (!targetUserId) {
+      dispatch(
+        showSnackbar({
+          severity: "warning",
+          message: "Please select a conversation to start a call",
+        })
+      );
+      return;
+    }
+    dispatch(StartVideoCall(targetUserId));
+  };
 
   const [openBlock, setOpenBlock] = useState(false);
   const [openDelete, setOpenDelete] = useState(false);
 
   const handleCloseBlock = () => {
     setOpenBlock(false);
-  }
+  };
 
-   const handleCloseDelete = () => {
+  const handleCloseDelete = () => {
     setOpenDelete(false);
-  }
+  };
+
   const handleCloseSidebar = () => {
     dispatch(CloseSidebar());
   };
@@ -181,27 +252,41 @@ const Contact = () => {
             spacing={2}
           >
             <Avatar
-              src="/images/avatar.png"
-              alt="John Doe"
+              src={getAvatarUrl(
+                current_conversation?.img,
+                current_conversation?.name
+              )}
+              alt={current_conversation?.name || "User"}
+              imgProps={{
+                onError: (e) => {
+                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                    current_conversation?.name || "User"
+                  )}`;
+                },
+              }}
               sx={{
                 width: 64,
                 height: 64,
               }}
-            />
+            >
+              {(current_conversation?.name || "U")[0]}
+            </Avatar>
 
-            <Stack spacing={0.5}>
+            <Stack spacing={0.5} sx={{ minWidth: 0, overflow: "hidden" }}>
               <Typography
                 variant="subtitle1"
                 fontWeight={600}
+                noWrap
               >
-                John Doe
+                {current_conversation?.name || "User"}
               </Typography>
 
               <Typography
                 variant="body2"
                 fontWeight={500}
+                color={current_conversation?.online ? "success.main" : "text.secondary"}
               >
-                +91 729 2829 2992
+                {current_conversation?.online ? "Online" : "Offline"}
               </Typography>
             </Stack>
           </Stack>
@@ -213,7 +298,7 @@ const Contact = () => {
             justifyContent="space-evenly"
           >
             <Stack spacing={1} alignItems="center">
-              <IconButton>
+              <IconButton onClick={handleAudioCall} color="primary">
                 <Phone size={21} />
               </IconButton>
 
@@ -223,7 +308,7 @@ const Contact = () => {
             </Stack>
 
             <Stack spacing={1} alignItems="center">
-              <IconButton>
+              <IconButton onClick={handleVideoCall} color="primary">
                 <VideoCamera size={21} />
               </IconButton>
 

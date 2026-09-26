@@ -12,14 +12,25 @@ import {
 } from "./MsgType";
 
 const Message = ({ menu }) => {
-  const { current_messages } = useSelector(
+  const { current_messages, search_query } = useSelector(
     (state) => state.conversation.direct_chat
   );
   const messageEndRef = useRef(null);
 
+  const query = (search_query || "").trim().toLowerCase();
+
+  const displayedMessages = query
+    ? (current_messages || []).filter((el) => {
+        if (!el?.message) return false;
+        return el.message.toLowerCase().includes(query);
+      })
+    : current_messages || [];
+
   useEffect(() => {
-    messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [current_messages]);
+    if (!query) {
+      messageEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [current_messages, query]);
 
   return (
     <Box
@@ -30,8 +41,8 @@ const Message = ({ menu }) => {
       }}
     >
       <Stack spacing={1.5}>
-        {current_messages && current_messages.length > 0 ? (
-          current_messages.map((el, index) => {
+        {displayedMessages && displayedMessages.length > 0 ? (
+          displayedMessages.map((el, index) => {
             switch (el.type) {
               case "divider":
                 return <Timeline key={el.id || index} el={el} />;
@@ -58,6 +69,12 @@ const Message = ({ menu }) => {
                 }
             }
           })
+        ) : query ? (
+          <Box sx={{ textAlign: "center", py: 4 }}>
+            <Typography variant="body2" color="text.secondary">
+              No messages found matching "{search_query}"
+            </Typography>
+          </Box>
         ) : (
           <Box sx={{ textAlign: "center", py: 4 }}>
             <Typography variant="body2" color="text.secondary">

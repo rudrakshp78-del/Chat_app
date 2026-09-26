@@ -8,10 +8,17 @@ export const BASE_URL = process.env.REACT_APP_BASE_URL || "http://localhost:5000
 
 
 
-export const S3_BUCKET_NAME = process.env.REACT_APP_S3_BUCKET_NAME || 'rudrakshp78';
+export const S3_BUCKET_NAME = process.env.REACT_APP_S3_BUCKET_NAME || '';
 export const AWS_ACCESS_KEY = process.env.REACT_APP_AWS_ACCESS_KEY || '';
 export const AWS_SECRET_ACCESS_KEY = process.env.REACT_APP_AWS_SECRET_ACCESS_KEY || '';
 export const AWS_S3_REGION = process.env.REACT_APP_AWS_S3_REGION || 'ap-south-1'; // eg. ap-south-1
+
+export const ZEGO_APP_ID = process.env.REACT_APP_ZEGO_APP_ID
+  ? parseInt(process.env.REACT_APP_ZEGO_APP_ID, 10)
+  : 1073252628;
+export const ZEGO_SERVER =
+  process.env.REACT_APP_ZEGO_SERVER ||
+  "wss://webliveroom-api.zegocloud.com/ws";
 
 
 export const defaultSettings = {

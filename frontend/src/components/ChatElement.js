@@ -4,6 +4,8 @@ import { styled, useTheme, alpha } from "@mui/material/styles";
 import { useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { SelectConversation } from "../redux/slices/app";
+import { SetCurrentConversation } from "../redux/slices/Conversation";
+import getAvatarUrl from "../utils/getAvatarUrl";
 
 const truncateText = (string, n) => {
   return string?.length > n ? `${string?.slice(0, n)}...` : string;
@@ -44,7 +46,7 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   },
 }));
 
-const ChatElement = ({ img, name, msg, time, unread, online, id }) => {
+const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about }) => {
   const dispatch = useDispatch();
   const {room_id} = useSelector((state) => state.app);
   const selectedChatId = room_id?.toString();
@@ -55,7 +57,20 @@ const ChatElement = ({ img, name, msg, time, unread, online, id }) => {
   return (
     <StyledChatBox
       onClick={() => {
-        dispatch(SelectConversation({room_id: id}));
+        dispatch(SelectConversation({ room_id: id }));
+        dispatch(
+          SetCurrentConversation({
+            id,
+            user_id,
+            name,
+            online,
+            img,
+            msg,
+            time,
+            unread,
+            about,
+          })
+        );
       }}
       sx={{
         width: "100%",
@@ -85,10 +100,34 @@ const ChatElement = ({ img, name, msg, time, unread, online, id }) => {
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               variant="dot"
             >
-              <Avatar alt={name} src={img} />
+              <Avatar
+                alt={name}
+                src={getAvatarUrl(img, name)}
+                imgProps={{
+                  onError: (e) => {
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                      name || "User"
+                    )}`;
+                  },
+                }}
+              >
+                {(name || "U")[0]}
+              </Avatar>
             </StyledBadge>
           ) : (
-            <Avatar alt={name} src={img} />
+            <Avatar
+              alt={name}
+              src={getAvatarUrl(img, name)}
+              imgProps={{
+                onError: (e) => {
+                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                    name || "User"
+                  )}`;
+                },
+              }}
+            >
+              {(name || "U")[0]}
+            </Avatar>
           )}
           <Stack spacing={0.3}>
             <Typography variant="subtitle2">{name}</Typography>

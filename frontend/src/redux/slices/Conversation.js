@@ -1,6 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { faker } from "@faker-js/faker";
-import { AWS_S3_REGION, S3_BUCKET_NAME } from "../../config";
+import getAvatarUrl from "../../utils/getAvatarUrl";
 
 const user_id = window.localStorage.getItem("user_id");
 
@@ -9,6 +9,8 @@ const initialState = {
     conversations: [],
     current_conversation: null,
     current_messages: [],
+    search_query: "",
+    open_search: false,
   },
   group_chat: {},
 };
@@ -29,7 +31,7 @@ const slice = createSlice({
           user_id: (this_user?._id || this_user)?.toString(),
           name: this_user ? `${this_user.firstName || ""} ${this_user.lastName || ""}`.trim() : "Unknown",
           online: this_user?.status === "Online",
-          img: this_user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${this_user?.firstName || "user"}`,
+          img: getAvatarUrl(this_user?.avatar, this_user?.firstName),
           msg: lastMsg ? lastMsg.text : "No messages yet",
           time: "9:36",
           unread: 0,
@@ -44,6 +46,7 @@ const slice = createSlice({
       const current_user_id = window.localStorage.getItem("user_id");
       const this_conversation = action.payload.conversation;
       if (!this_conversation) return;
+      let matchedUpdated = null;
       state.direct_chat.conversations = state.direct_chat.conversations.map(
         (el) => {
           if (el?.id?.toString() !== this_conversation._id?.toString()) {
@@ -55,20 +58,28 @@ const slice = createSlice({
             const lastMsg = this_conversation.messages && this_conversation.messages.length > 0
               ? this_conversation.messages[this_conversation.messages.length - 1]
               : null;
-            return {
+            const updated = {
               id: this_conversation._id,
               user_id: (user?._id || user)?.toString() || el.user_id,
               name: user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : el.name,
               online: user?.status === "Online",
-              img: user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.firstName || "user"}`,
+              img: getAvatarUrl(user?.avatar, user?.firstName),
               msg: lastMsg ? lastMsg.text : el.msg,
               time: "9:36",
               unread: 0,
               pinned: false,
             };
+            matchedUpdated = updated;
+            return updated;
           }
         },
       );
+      if (
+        matchedUpdated &&
+        state.direct_chat.current_conversation?.id?.toString() === this_conversation._id?.toString()
+      ) {
+        state.direct_chat.current_conversation = matchedUpdated;
+      }
     },
     addDirectConversation(state, action) {
       const current_user_id = window.localStorage.getItem("user_id");
@@ -92,7 +103,7 @@ const slice = createSlice({
         user_id: (user?._id || user)?.toString(),
         name: user ? `${user.firstName || ""} ${user.lastName || ""}`.trim() : "Unknown",
         online: user?.status === "Online",
-        img: user?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user?.firstName || "user"}`,
+        img: getAvatarUrl(user?.avatar, user?.firstName),
         msg: lastMsg ? lastMsg.text : "No messages yet",
         time: "9:36",
         unread: 0,
@@ -138,6 +149,19 @@ const slice = createSlice({
       if (!exists) {
         state.direct_chat.current_messages.push(msg);
       }
+    },
+    setSearchQuery(state, action) {
+      state.direct_chat.search_query = action.payload.query;
+    },
+    toggleSearch(state) {
+      state.direct_chat.open_search = !state.direct_chat.open_search;
+      if (!state.direct_chat.open_search) {
+        state.direct_chat.search_query = "";
+      }
+    },
+    closeSearch(state) {
+      state.direct_chat.open_search = false;
+      state.direct_chat.search_query = "";
     },
   },
 });
@@ -202,3 +226,22 @@ export const AddDirectMessage = (message) => {
     );
   };
 };
+
+export const SetSearchQuery = (query) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.setSearchQuery({ query }));
+  };
+};
+
+export const ToggleSearch = () => {
+  return async (dispatch) => {
+    dispatch(slice.actions.toggleSearch());
+  };
+};
+
+export const CloseSearch = () => {
+  return async (dispatch) => {
+    dispatch(slice.actions.closeSearch());
+  };
+};
+

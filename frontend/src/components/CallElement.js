@@ -17,7 +17,7 @@ import {
 import { useDispatch } from "react-redux";
 import { StartAudioCall } from "../redux/slices/audioCall";
 import { StartVideoCall } from "../redux/slices/videoCall";
-import { AWS_S3_REGION, S3_BUCKET_NAME } from "../config";
+import getAvatarUrl from "../utils/getAvatarUrl";
 
 const StyledChatBox = styled(Box)(({ theme }) => ({
   "&:hover": {
@@ -56,14 +56,15 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
 
 const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
   const theme = useTheme();
+  const dispatch = useDispatch();
+
+  const avatarSrc = getAvatarUrl(img, name);
 
   return (
     <StyledChatBox
       sx={{
         width: "100%",
-
         borderRadius: 1,
-
         backgroundColor: theme.palette.background.paper,
       }}
       p={2}
@@ -73,18 +74,41 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
         alignItems={"center"}
         justifyContent="space-between"
       >
-        <Stack direction="row" spacing={2}>
-          {" "}
+        <Stack direction="row" spacing={2} alignItems="center">
           {online ? (
             <StyledBadge
               overlap="circular"
               anchorOrigin={{ vertical: "bottom", horizontal: "right" }}
               variant="dot"
             >
-              <Avatar alt={name} src={`https://${S3_BUCKET_NAME}.s3.${AWS_S3_REGION}.amazonaws.com/${img}`} />
+              <Avatar
+                alt={name}
+                src={avatarSrc}
+                imgProps={{
+                  onError: (e) => {
+                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                      name || "User"
+                    )}`;
+                  },
+                }}
+              >
+                {(name || "U")[0]}
+              </Avatar>
             </StyledBadge>
           ) : (
-            <Avatar alt={name} src={`https://${S3_BUCKET_NAME}.s3.${AWS_S3_REGION}.amazonaws.com/${img}`} />
+            <Avatar
+              alt={name}
+              src={avatarSrc}
+              imgProps={{
+                onError: (e) => {
+                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                    name || "User"
+                  )}`;
+                },
+              }}
+            >
+              {(name || "U")[0]}
+            </Avatar>
           )}
           <Stack spacing={0.3}>
             <Typography variant="subtitle2">{name}</Typography>
@@ -98,10 +122,26 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
             </Stack>
           </Stack>
         </Stack>
-        <Stack direction={"row"} spacing={2} alignItems={"center"}>
-          <Phone />
+        <Stack direction={"row"} spacing={1} alignItems={"center"}>
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (id !== undefined && id !== null) dispatch(StartAudioCall(id));
+            }}
+          >
+            <Phone size={20} style={{ color: theme.palette.primary.main }} />
+          </IconButton>
 
-          <VideoCamera />
+          <IconButton
+            size="small"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (id !== undefined && id !== null) dispatch(StartVideoCall(id));
+            }}
+          >
+            <VideoCamera size={20} style={{ color: theme.palette.primary.main }} />
+          </IconButton>
         </Stack>
       </Stack>
     </StyledChatBox>
@@ -112,13 +152,13 @@ const CallElement = ({ img, name, id, handleClose }) => {
   const dispatch = useDispatch();
   const theme = useTheme();
 
+  const avatarSrc = getAvatarUrl(img, name);
+
   return (
     <StyledChatBox
       sx={{
         width: "100%",
-
         borderRadius: 1,
-
         backgroundColor: theme.palette.background.paper,
       }}
       p={2}
@@ -128,9 +168,20 @@ const CallElement = ({ img, name, id, handleClose }) => {
         alignItems={"center"}
         justifyContent="space-between"
       >
-        <Stack direction="row" spacing={2}>
-          {" "}
-          <Avatar alt={name} src={img} />
+        <Stack direction="row" spacing={2} alignItems="center">
+          <Avatar
+            alt={name}
+            src={avatarSrc}
+            imgProps={{
+              onError: (e) => {
+                e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
+                  name || "User"
+                )}`;
+              },
+            }}
+          >
+            {(name || "U")[0]}
+          </Avatar>
           <Stack spacing={0.3} alignItems="center" direction={"row"}>
             <Typography variant="subtitle2">{name}</Typography>
           </Stack>
@@ -138,8 +189,8 @@ const CallElement = ({ img, name, id, handleClose }) => {
         <Stack direction={"row"} spacing={2} alignItems={"center"}>
           <IconButton
             onClick={() => {
-              dispatch(StartAudioCall(id));
-              handleClose();
+              if (id !== undefined && id !== null) dispatch(StartAudioCall(id));
+              if (typeof handleClose === "function") handleClose();
             }}
           >
             <Phone style={{ color: theme.palette.primary.main }} />
@@ -147,8 +198,8 @@ const CallElement = ({ img, name, id, handleClose }) => {
 
           <IconButton
             onClick={() => {
-              dispatch(StartVideoCall(id));
-              handleClose();
+              if (id !== undefined && id !== null) dispatch(StartVideoCall(id));
+              if (typeof handleClose === "function") handleClose();
             }}
           >
             <VideoCamera style={{ color: theme.palette.primary.main }} />

@@ -1,6 +1,7 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { socket } from "../../socket";
 import axios from "../../utils/axios";
+import { showSnackbar } from "./app";
 
 const initialState = {
   open_audio_dialog: false,
@@ -35,6 +36,7 @@ const slice = createSlice({
     },
     resetAudioCallQueue(state, action) {
       state.call_queue = [];
+      state.open_audio_dialog = false;
       state.open_audio_notification_dialog = false;
       state.incoming = false;
     },
@@ -56,6 +58,24 @@ export default slice.reducer;
 export const StartAudioCall = (id) => {
   return async (dispatch, getState) => {
     dispatch(slice.actions.resetAudioCallQueue());
+
+    const token =
+      getState().auth?.token ||
+      (typeof window !== "undefined"
+        ? window.localStorage.getItem("token") ||
+          window.localStorage.getItem("accessToken")
+        : null);
+
+    if (!token) {
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message: "Please log in again to make calls",
+        })
+      );
+      return;
+    }
+
     axios
       .post(
         "/user/start-audio-call",
@@ -63,12 +83,12 @@ export const StartAudioCall = (id) => {
         {
           headers: {
             "Content-Type": "application/json",
-            Authorization: `Bearer ${getState().auth.token}`,
+            Authorization: `Bearer ${token}`,
           },
         }
       )
       .then((response) => {
-        console.log(response);
+        console.log("start-audio-call response:", response);
         dispatch(
           slice.actions.pushToAudioCallQueue({
             call: response.data.data,
@@ -77,7 +97,19 @@ export const StartAudioCall = (id) => {
         );
       })
       .catch((err) => {
-        console.log(err);
+        console.error("StartAudioCall error:", err);
+        const errMsg =
+          err?.message ||
+          err?.response?.data?.message ||
+          (typeof err === "string"
+            ? err
+            : "Failed to initiate voice call. Please try again.");
+        dispatch(
+          showSnackbar({
+            severity: "error",
+            message: errMsg,
+          })
+        );
       });
   };
 };

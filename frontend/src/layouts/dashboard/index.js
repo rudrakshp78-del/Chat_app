@@ -19,10 +19,19 @@ import {
   UpdateDirectConversation,
   AddDirectConversation,
   AddDirectMessage,
-  FetchDirectConversations,
 } from "../../redux/slices/Conversation";
 
-import { UpdateVideoCallDialog } from "../../redux/slices/videoCall";
+import {
+  CloseAudioNotificationDialog,
+  PushToAudioCallQueue,
+  UpdateAudioCallDialog,
+} from "../../redux/slices/audioCall";
+
+import {
+  CloseVideoNotificationDialog,
+  PushToVideoCallQueue,
+  UpdateVideoCallDialog,
+} from "../../redux/slices/videoCall";
 
 import AudioCallNotification from "../../sections/dashboard/Audio/CallNotification";
 import VideoCallNotification from "../../sections/dashboard/video/CallNotification";
@@ -41,11 +50,6 @@ const DashboardLayout = () => {
   const { conversations } = useSelector(
     (state) => state.conversation.direct_chat,
   );
-
-  const reduxState = useSelector((state) => state);
-
-  console.log("🔥 FULL REDUX STATE:", reduxState);
-  console.log("🔥 AUDIO CALL STATE:", reduxState.audioCall);
 
   const { open_audio_notification_dialog, open_audio_dialog } = useSelector(
     (state) => state.audioCall,
@@ -68,9 +72,21 @@ const DashboardLayout = () => {
     }
   }, [dispatch, isLoggedIn]);
 
-  // Close video call dialog
+  // Dialog close handlers
+  const handleCloseAudioDialog = () => {
+    dispatch(UpdateAudioCallDialog({ state: false }));
+  };
+
+  const handleCloseAudioNotificationDialog = () => {
+    dispatch(CloseAudioNotificationDialog());
+  };
+
   const handleCloseVideoDialog = () => {
     dispatch(UpdateVideoCallDialog({ state: false }));
+  };
+
+  const handleCloseVideoNotificationDialog = () => {
+    dispatch(CloseVideoNotificationDialog());
   };
 
   // Socket events
@@ -140,6 +156,18 @@ const DashboardLayout = () => {
       );
     });
 
+    // Incoming audio call notification
+    socket.on("audio_call_notification", (data) => {
+      console.log("AUDIO CALL NOTIFICATION RECEIVED:", data);
+      dispatch(PushToAudioCallQueue(data));
+    });
+
+    // Incoming video call notification
+    socket.on("video_call_notification", (data) => {
+      console.log("VIDEO CALL NOTIFICATION RECEIVED:", data);
+      dispatch(PushToVideoCallQueue(data));
+    });
+
     // New friend request
     socket.on("new_friend_request", () => {
       dispatch(
@@ -177,6 +205,8 @@ const DashboardLayout = () => {
       socket?.off("request_sent");
       socket?.off("start_chat");
       socket?.off("new_message");
+      socket?.off("audio_call_notification");
+      socket?.off("video_call_notification");
     };
   }, [isLoggedIn, user_id, dispatch, current_conversation, conversations, room_id]);
 
@@ -221,15 +251,26 @@ const DashboardLayout = () => {
 
       {/* Audio call notification */}
       {open_audio_notification_dialog && (
-        <AudioCallNotification open={open_audio_notification_dialog} />
+        <AudioCallNotification
+          open={open_audio_notification_dialog}
+          handleClose={handleCloseAudioNotificationDialog}
+        />
       )}
 
       {/* Audio call dialog */}
-      {open_audio_dialog && <AudioCallDialog open={open_audio_dialog} />}
+      {open_audio_dialog && (
+        <AudioCallDialog
+          open={open_audio_dialog}
+          handleClose={handleCloseAudioDialog}
+        />
+      )}
 
       {/* Video call notification */}
       {open_video_notification_dialog && (
-        <VideoCallNotification open={open_video_notification_dialog} />
+        <VideoCallNotification
+          open={open_video_notification_dialog}
+          handleClose={handleCloseVideoNotificationDialog}
+        />
       )}
 
       {/* Video call dialog */}

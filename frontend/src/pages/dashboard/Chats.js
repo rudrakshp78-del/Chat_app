@@ -30,6 +30,7 @@ import { FetchDirectConversations } from "../../redux/slices/Conversation";
 
 const Chats = () => {
   const [openDialog, setOpenDialog] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
   const theme = useTheme();
 
   const dispatch = useDispatch();
@@ -141,7 +142,9 @@ const Chats = () => {
               </SearchIconWrapper>
 
               <StyledInputBase
-                placeholder="Search..."
+                placeholder="Search chats..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
                 inputProps={{
                   "aria-label": "search",
                 }}
@@ -182,6 +185,12 @@ const Chats = () => {
 
                 {conversations
                   .filter((el) => !el.pinned)
+                  .filter((el) => {
+                    if (!searchTerm.trim()) return true;
+                    return el?.name
+                      ?.toLowerCase()
+                      .includes(searchTerm.trim().toLowerCase());
+                  })
                   .map((el) => (
                     <ChatElement key={el.id} {...el} />
                   ))}
