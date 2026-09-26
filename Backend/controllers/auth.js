@@ -110,6 +110,63 @@ exports.sendOTP = catchAsync(async (req, res, next) => {
   });
 });
 
+exports.resendOTP = catchAsync(async (req, res, next) => {
+  const email = req.body.email?.trim().toLowerCase();
+
+  if (!email) {
+    return res.status(400).json({
+      status: "error",
+      message: "Please provide an email address",
+    });
+  }
+
+  const user = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(404).json({
+      status: "error",
+      message: "User not found with this email",
+    });
+  }
+
+  if (user.verified) {
+    return res.status(400).json({
+      status: "error",
+      message: "Email is already verified. Please log in.",
+    });
+  }
+
+  const new_otp = otpGenerator.generate(6, {
+    upperCaseAlphabets: false,
+    specialChars: false,
+    lowerCaseAlphabets: false,
+  });
+
+  const otp_expiry_time = new Date(Date.now() + 10 * 60 * 1000);
+
+  user.otp = new_otp;
+  user.otp_expiry_time = otp_expiry_time;
+
+  await user.save();
+
+  try {
+    await mailService.sendEmail({
+      from: process.env.SENDGRID_FROM_EMAIL,
+      to: user.email,
+      subject: "Verification OTP",
+      html: otp(user.firstName, new_otp),
+      attachments: [],
+    });
+  } catch (err) {
+    console.error("Failed to send OTP email:", err);
+  }
+
+  return res.status(200).json({
+    status: "success",
+    message: "New OTP sent successfully!",
+  });
+});
+
 exports.verifyOTP = catchAsync(async (req, res, next) => {
   const email = req.body.email?.trim().toLowerCase();
 
@@ -125,6 +182,13 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
   console.log("Email:", email);
   console.log("OTP:", otp);
   console.log("Current time:", new Date());
+
+  if (!email || !otp) {
+    return res.status(400).json({
+      status: "error",
+      message: "Please provide both email and OTP",
+    });
+  }
 
   const user = await User.findOne({ email });
 

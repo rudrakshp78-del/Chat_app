@@ -1,24 +1,30 @@
-import { useState } from "react";
 import * as Yup from "yup";
 // form
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
 // @mui
-import { Stack, IconButton, InputAdornment, Button } from "@mui/material";
+import { Stack, Button, Typography, Link } from "@mui/material";
 // components
-import FormProvider, { RHFTextField } from "../../components/hook-form";
-import { Eye, EyeSlash } from "phosphor-react";
+import FormProvider from "../../components/hook-form";
 import RHFCodes from "../../components/hook-form/RHFCodes";
 import { useDispatch, useSelector } from "react-redux";
-import { VerifyEmail } from "../../redux/slices/auth";
+import { VerifyEmail, ResendOTP } from "../../redux/slices/auth";
+import { showSnackbar } from "../../redux/slices/app";
 
 // ----------------------------------------------------------------------
 
 export default function VerifyForm() {
   const dispatch = useDispatch();
   const reduxEmail = useSelector((state) => state.auth.email);
+  const isLoading = useSelector((state) => state.auth.isLoading);
 
-  const email = reduxEmail || window.localStorage.getItem("verify_email") || "";
+  const email =
+    reduxEmail ||
+    (typeof window !== "undefined"
+      ? window.localStorage.getItem("verify_email")
+      : "") ||
+    "";
+
   const VerifyCodeSchema = Yup.object().shape({
     code1: Yup.string().required("Code is required"),
     code2: Yup.string().required("Code is required"),
@@ -45,21 +51,57 @@ export default function VerifyForm() {
 
   const {
     handleSubmit,
-    formState: { isSubmitting, errors },
+    formState: { isSubmitting },
   } = methods;
 
   const onSubmit = async (data) => {
     try {
-      //   Send API Request
+      const emailToVerify =
+        email ||
+        (typeof window !== "undefined"
+          ? window.localStorage.getItem("verify_email")
+          : "") ||
+        "";
+
+      if (!emailToVerify) {
+        dispatch(
+          showSnackbar({
+            severity: "error",
+            message: "Email address not found. Please register again.",
+          })
+        );
+        return;
+      }
+
       dispatch(
         VerifyEmail({
-          email,
+          email: emailToVerify,
           otp: `${data.code1}${data.code2}${data.code3}${data.code4}${data.code5}${data.code6}`,
         }),
       );
     } catch (error) {
       console.error(error);
     }
+  };
+
+  const handleResend = () => {
+    const emailToVerify =
+      email ||
+      (typeof window !== "undefined"
+        ? window.localStorage.getItem("verify_email")
+        : "") ||
+      "";
+
+    if (!emailToVerify) {
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message: "Email address not found. Please register again.",
+        })
+      );
+      return;
+    }
+    dispatch(ResendOTP(emailToVerify));
   };
 
   return (
@@ -75,6 +117,7 @@ export default function VerifyForm() {
           size="large"
           type="submit"
           variant="contained"
+          disabled={isSubmitting || isLoading}
           sx={{
             mt: 3,
             bgcolor: "text.primary",
@@ -87,8 +130,19 @@ export default function VerifyForm() {
             },
           }}
         >
-          Verify
+          {isLoading ? "Verifying..." : "Verify"}
         </Button>
+
+        <Stack direction="row" justifyContent="center" spacing={1} sx={{ mt: 2 }}>
+          <Typography variant="body2">Didn't receive the code?</Typography>
+          <Link
+            variant="subtitle2"
+            sx={{ cursor: "pointer" }}
+            onClick={handleResend}
+          >
+            Resend code
+          </Link>
+        </Stack>
       </Stack>
     </FormProvider>
   );

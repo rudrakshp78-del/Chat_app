@@ -269,6 +269,7 @@ export function VerifyEmail(formValues) {
       .then(function (response) {
         console.log(response);
         dispatch(slice.actions.updateRegisterEmail({ email: "" }));
+        window.localStorage.removeItem("verify_email");
         window.localStorage.setItem("user_id", response.data.user_id);
         window.localStorage.setItem("token", response.data.token);
         dispatch(
@@ -288,7 +289,51 @@ export function VerifyEmail(formValues) {
       })
       .catch(function (error) {
         console.log(error);
-        dispatch(showSnackbar({ severity: "error", message: error.message }));
+        const errorMsg =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          "OTP verification failed";
+        dispatch(showSnackbar({ severity: "error", message: errorMsg }));
+        dispatch(
+          slice.actions.updateIsLoading({ error: true, isLoading: false }),
+        );
+      });
+  };
+}
+
+export function ResendOTP(email) {
+  return async (dispatch, getState) => {
+    dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
+
+    await axios
+      .post(
+        "/auth/resend-otp",
+        { email },
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      )
+      .then(function (response) {
+        dispatch(
+          showSnackbar({
+            severity: "success",
+            message: response.data.message || "OTP resent successfully!",
+          }),
+        );
+        dispatch(
+          slice.actions.updateIsLoading({ isLoading: false, error: false }),
+        );
+      })
+      .catch(function (error) {
+        const errorMsg =
+          error.response?.data?.message ||
+          error.response?.data?.error ||
+          error.message ||
+          "Failed to resend OTP";
+        dispatch(showSnackbar({ severity: "error", message: errorMsg }));
         dispatch(
           slice.actions.updateIsLoading({ error: true, isLoading: false }),
         );
