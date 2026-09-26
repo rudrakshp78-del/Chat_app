@@ -20,6 +20,8 @@ const app = require("./app");
 const User = require("./models/user");
 const FriendRequest = require("./models/friendRequest");
 const OneToOneMessage = require("./models/OneToOneMessage");
+const AudioCall = require("./models/audioCall");
+const VideoCall = require("./models/videoCall");
 
 // ================================
 // SENDGRID
@@ -560,6 +562,249 @@ async function startServer() {
             }
           } catch (err) {
             console.error("file_message error:", err);
+          }
+        });
+
+        // ========================================
+        // CALL EVENT HANDLERS
+        // ========================================
+
+        // Start Audio Call
+        socket.on("start_audio_call", async (data) => {
+          try {
+            console.log("start_audio_call:", data);
+            const { to, from, roomID } = data;
+            const to_user = await User.findById(to);
+            const from_user = await User.findById(from);
+
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("audio_call_notification", {
+                roomID,
+                streamID: from,
+                userID: to,
+                userName: `${to_user.firstName} ${to_user.lastName}`.trim(),
+                from_user,
+                to_user,
+              });
+            } else {
+              // recipient is offline
+              socket.emit("audio_call_missed", { to, from, roomID });
+            }
+          } catch (err) {
+            console.error("start_audio_call error:", err);
+          }
+        });
+
+        // Start Video Call
+        socket.on("start_video_call", async (data) => {
+          try {
+            console.log("start_video_call:", data);
+            const { to, from, roomID } = data;
+            const to_user = await User.findById(to);
+            const from_user = await User.findById(from);
+
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("video_call_notification", {
+                roomID,
+                streamID: from,
+                userID: to,
+                userName: `${to_user.firstName} ${to_user.lastName}`.trim(),
+                from_user,
+                to_user,
+              });
+            } else {
+              // recipient is offline
+              socket.emit("video_call_missed", { to, from, roomID });
+            }
+          } catch (err) {
+            console.error("start_video_call error:", err);
+          }
+        });
+
+        // Audio Call Accepted
+        socket.on("audio_call_accepted", async (data) => {
+          try {
+            console.log("audio_call_accepted:", data);
+            if (data?.call_id || data?.roomID) {
+              await AudioCall.findByIdAndUpdate(data.call_id || data.roomID, {
+                verdict: "Accepted",
+                status: "Ongoing",
+              });
+            }
+            const callerId = data?.streamID || data?.from_user?._id;
+            const from_user = await User.findById(callerId);
+            if (from_user?.socket_id) {
+              io.to(from_user.socket_id).emit("audio_call_accepted", data);
+            }
+          } catch (err) {
+            console.error("audio_call_accepted error:", err);
+          }
+        });
+
+        // Video Call Accepted
+        socket.on("video_call_accepted", async (data) => {
+          try {
+            console.log("video_call_accepted:", data);
+            if (data?.call_id || data?.roomID) {
+              await VideoCall.findByIdAndUpdate(data.call_id || data.roomID, {
+                verdict: "Accepted",
+                status: "Ongoing",
+              });
+            }
+            const callerId = data?.streamID || data?.from_user?._id;
+            const from_user = await User.findById(callerId);
+            if (from_user?.socket_id) {
+              io.to(from_user.socket_id).emit("video_call_accepted", data);
+            }
+          } catch (err) {
+            console.error("video_call_accepted error:", err);
+          }
+        });
+
+        // Audio Call Denied
+        socket.on("audio_call_denied", async (data) => {
+          try {
+            console.log("audio_call_denied:", data);
+            let call = null;
+            if (data?.call_id || data?.roomID) {
+              call = await AudioCall.findByIdAndUpdate(
+                data.call_id || data.roomID,
+                {
+                  verdict: "Denied",
+                  status: "Ended",
+                  endedAt: Date.now(),
+                },
+                { new: true }
+              );
+            }
+
+            if (call && call.participants) {
+              for (const p of call.participants) {
+                const u = await User.findById(p);
+                if (u?.socket_id && u.socket_id !== socket.id) {
+                  io.to(u.socket_id).emit("audio_call_denied", data);
+                }
+              }
+            } else {
+              const callerId = data?.streamID || data?.from_user?._id || data?.to || data?.from;
+              if (callerId) {
+                const targetUser = await User.findById(callerId);
+                if (targetUser?.socket_id && targetUser.socket_id !== socket.id) {
+                  io.to(targetUser.socket_id).emit("audio_call_denied", data);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("audio_call_denied error:", err);
+          }
+        });
+
+        // Video Call Denied
+        socket.on("video_call_denied", async (data) => {
+          try {
+            console.log("video_call_denied:", data);
+            let call = null;
+            if (data?.call_id || data?.roomID) {
+              call = await VideoCall.findByIdAndUpdate(
+                data.call_id || data.roomID,
+                {
+                  verdict: "Denied",
+                  status: "Ended",
+                  endedAt: Date.now(),
+                },
+                { new: true }
+              );
+            }
+
+            if (call && call.participants) {
+              for (const p of call.participants) {
+                const u = await User.findById(p);
+                if (u?.socket_id && u.socket_id !== socket.id) {
+                  io.to(u.socket_id).emit("video_call_denied", data);
+                }
+              }
+            } else {
+              const callerId = data?.streamID || data?.from_user?._id || data?.to || data?.from;
+              if (callerId) {
+                const targetUser = await User.findById(callerId);
+                if (targetUser?.socket_id && targetUser.socket_id !== socket.id) {
+                  io.to(targetUser.socket_id).emit("video_call_denied", data);
+                }
+              }
+            }
+          } catch (err) {
+            console.error("video_call_denied error:", err);
+          }
+        });
+
+        // Audio Call Not Picked / Missed
+        socket.on("audio_call_not_picked", async (data) => {
+          try {
+            console.log("audio_call_not_picked:", data);
+            const to_user = await User.findById(data.to);
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("audio_call_missed", data);
+            }
+            if (data?.call_id || data?.roomID) {
+              await AudioCall.findByIdAndUpdate(data.call_id || data.roomID, {
+                verdict: "Missed",
+                status: "Ended",
+                endedAt: Date.now(),
+              });
+            }
+          } catch (err) {
+            console.error("audio_call_not_picked error:", err);
+          }
+        });
+
+        // Video Call Not Picked / Missed
+        socket.on("video_call_not_picked", async (data) => {
+          try {
+            console.log("video_call_not_picked:", data);
+            const to_user = await User.findById(data.to);
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("video_call_missed", data);
+            }
+            if (data?.call_id || data?.roomID) {
+              await VideoCall.findByIdAndUpdate(data.call_id || data.roomID, {
+                verdict: "Missed",
+                status: "Ended",
+                endedAt: Date.now(),
+              });
+            }
+          } catch (err) {
+            console.error("video_call_not_picked error:", err);
+          }
+        });
+
+        // User Busy
+        socket.on("user_is_busy_audio_call", async (data) => {
+          try {
+            const callerId = data?.streamID || data?.from_user?._id;
+            const from_user = await User.findById(callerId);
+            if (from_user?.socket_id) {
+              io.to(from_user.socket_id).emit("audio_call_denied", {
+                ...data,
+                busy: true,
+              });
+            }
+          } catch (err) {
+            console.error("user_is_busy_audio_call error:", err);
+          }
+        });
+
+        socket.on("user_is_busy_video_call", async (data) => {
+          try {
+            const callerId = data?.streamID || data?.from_user?._id;
+            const from_user = await User.findById(callerId);
+            if (from_user?.socket_id) {
+              io.to(from_user.socket_id).emit("video_call_denied", {
+                ...data,
+                busy: true,
+              });
+            }
+          } catch (err) {
+            console.error("user_is_busy_video_call error:", err);
           }
         });
 
