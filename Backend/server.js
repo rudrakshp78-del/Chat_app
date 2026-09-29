@@ -553,6 +553,18 @@ async function startServer() {
               message: saved_message,
             });
 
+            // emit new_message -> to sender's room
+            io.to(from.toString()).emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
+            // emit new_message -> to recipient user room
+            io.to(to.toString()).emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
             // emit new_message -> to sender's other sockets (if any)
             if (from_user?.socket_id && from_user.socket_id !== socket.id) {
               io.to(from_user.socket_id).emit("new_message", {
@@ -561,7 +573,7 @@ async function startServer() {
               });
             }
 
-            // emit new_message -> to recipient user
+            // emit new_message -> to recipient user socket_id (if any)
             if (to_user?.socket_id) {
               io.to(to_user.socket_id).emit("new_message", {
                 conversation_id: chat._id,
@@ -637,6 +649,18 @@ async function startServer() {
 
             // emit new_message -> directly to sender's active socket
             socket.emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
+            // emit new_message -> to sender's room
+            io.to(from.toString()).emit("new_message", {
+              conversation_id: chat._id,
+              message: saved_message,
+            });
+
+            // emit new_message -> to recipient user room
+            io.to(to.toString()).emit("new_message", {
               conversation_id: chat._id,
               message: saved_message,
             });

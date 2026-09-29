@@ -158,6 +158,38 @@ const slice = createSlice({
         state.direct_chat.current_messages.push(msg);
       }
     },
+    updateConversationOnNewMessage(state, action) {
+      const { conversation_id, message, is_current } = action.payload;
+      if (!conversation_id || !message) return;
+
+      const previewText = message.text || (message.file ? "Attachment" : "New message");
+
+      state.direct_chat.conversations = state.direct_chat.conversations.map((c) => {
+        if (
+          c.id?.toString() === conversation_id?.toString() ||
+          c._id?.toString() === conversation_id?.toString()
+        ) {
+          return {
+            ...c,
+            msg: previewText,
+            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            unread: is_current ? 0 : (c.unread || 0) + 1,
+          };
+        }
+        return c;
+      });
+
+      if (
+        state.direct_chat.current_conversation &&
+        (state.direct_chat.current_conversation.id?.toString() === conversation_id?.toString() ||
+          state.direct_chat.current_conversation._id?.toString() === conversation_id?.toString())
+      ) {
+        state.direct_chat.current_conversation = {
+          ...state.direct_chat.current_conversation,
+          msg: previewText,
+        };
+      }
+    },
     setReplyingTo(state, action) {
       state.direct_chat.replying_to = action.payload;
     },
@@ -427,4 +459,11 @@ export const ClearDirectMessages = (payload) => {
     dispatch(slice.actions.clearDirectMessages(payload));
   };
 };
+
+export const UpdateConversationOnNewMessage = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.updateConversationOnNewMessage(payload));
+  };
+};
+
 

@@ -19,6 +19,7 @@ import {
   UpdateDirectConversation,
   AddDirectConversation,
   AddDirectMessage,
+  UpdateConversationOnNewMessage,
   DeleteDirectMessage,
   ReactDirectMessage,
   StarDirectMessage,
@@ -70,6 +71,15 @@ const DashboardLayout = () => {
 
   const { room_id } = useSelector((state) => state.app);
 
+  // Request notification permissions
+  useEffect(() => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        Notification.requestPermission();
+      }
+    }
+  }, []);
+
   // Fetch user profile
   useEffect(() => {
     if (isLoggedIn) {
@@ -113,6 +123,7 @@ const DashboardLayout = () => {
     // New message
     socket.on("new_message", (data) => {
       const message = data.message;
+      if (!message) return;
 
       console.log("NEW MESSAGE:", data);
 
@@ -121,10 +132,11 @@ const DashboardLayout = () => {
       const outgoing = fromId === current_user_id?.toString();
       const incoming = !outgoing;
 
-      if (
+      const isCurrentChat =
         current_conversation?.id?.toString() === data.conversation_id?.toString() ||
-        room_id?.toString() === data.conversation_id?.toString()
-      ) {
+        room_id?.toString() === data.conversation_id?.toString();
+
+      if (isCurrentChat) {
         dispatch(
           AddDirectMessage({
             id: message._id,
@@ -142,6 +154,48 @@ const DashboardLayout = () => {
             to: (message.to?._id || message.to)?.toString(),
           }),
         );
+      }
+
+      dispatch(
+        UpdateConversationOnNewMessage({
+          conversation_id: data.conversation_id,
+          message,
+          is_current: isCurrentChat,
+        }),
+      );
+
+      // Trigger notification for incoming message
+      if (incoming) {
+        const senderConv = (conversations || []).find(
+          (c) =>
+            c.id?.toString() === data.conversation_id?.toString() ||
+            c._id?.toString() === data.conversation_id?.toString()
+        );
+        const senderName = senderConv?.name || "New Message";
+        const contentPreview =
+          message.text || (message.file ? "Sent an attachment" : "New message");
+
+        // 1. In-app Snackbar notification
+        dispatch(
+          showSnackbar({
+            severity: "info",
+            message: `${senderName}: ${contentPreview}`,
+          })
+        );
+
+        // 2. Browser Desktop Notification (when backgrounded or minimized)
+        if (typeof window !== "undefined" && "Notification" in window) {
+          if (Notification.permission === "granted") {
+            try {
+              new Notification(senderName, {
+                body: contentPreview,
+                icon: senderConv?.img || "/favicon.ico",
+              });
+            } catch (err) {
+              console.log("Notification error:", err);
+            }
+          }
+        }
       }
     });
 
