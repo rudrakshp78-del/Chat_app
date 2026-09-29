@@ -17,6 +17,7 @@ import {
   DotsThreeVertical,
   DownloadSimple,
   Image,
+  Prohibit,
   Smiley,
   Star,
   Trash,
@@ -139,48 +140,62 @@ const MessageOptions = ({ el }) => {
           },
         }}
       >
-        <MenuItem onClick={() => handleAction("reply")} sx={{ gap: 1.5 }}>
-          <ArrowBendUpLeft size={18} />
-          <Typography variant="body2">Reply</Typography>
-        </MenuItem>
+        {!el?.deleted ? (
+          <>
+            <MenuItem onClick={() => handleAction("reply")} sx={{ gap: 1.5 }}>
+              <ArrowBendUpLeft size={18} />
+              <Typography variant="body2">Reply</Typography>
+            </MenuItem>
 
-        <MenuItem onClick={() => handleAction("react")} sx={{ gap: 1.5 }}>
-          <Smiley size={18} />
-          <Typography variant="body2">React to message</Typography>
-        </MenuItem>
+            <MenuItem onClick={() => handleAction("react")} sx={{ gap: 1.5 }}>
+              <Smiley size={18} />
+              <Typography variant="body2">React to message</Typography>
+            </MenuItem>
 
-        <MenuItem onClick={() => handleAction("forward")} sx={{ gap: 1.5 }}>
-          <ArrowBendUpRight size={18} />
-          <Typography variant="body2">Forward message</Typography>
-        </MenuItem>
+            <MenuItem onClick={() => handleAction("forward")} sx={{ gap: 1.5 }}>
+              <ArrowBendUpRight size={18} />
+              <Typography variant="body2">Forward message</Typography>
+            </MenuItem>
 
-        <MenuItem onClick={() => handleAction("star")} sx={{ gap: 1.5 }}>
-          <Star
-            size={18}
-            weight={el?.starred ? "fill" : "regular"}
-            color={el?.starred ? "#f5a623" : "inherit"}
-          />
-          <Typography variant="body2">
-            {el?.starred ? "Unstar message" : "Star message"}
-          </Typography>
-        </MenuItem>
+            <MenuItem onClick={() => handleAction("star")} sx={{ gap: 1.5 }}>
+              <Star
+                size={18}
+                weight={el?.starred ? "fill" : "regular"}
+                color={el?.starred ? "#f5a623" : "inherit"}
+              />
+              <Typography variant="body2">
+                {el?.starred ? "Unstar message" : "Star message"}
+              </Typography>
+            </MenuItem>
 
-        <MenuItem onClick={() => handleAction("report")} sx={{ gap: 1.5 }}>
-          <WarningOctagon size={18} />
-          <Typography variant="body2">Report</Typography>
-        </MenuItem>
+            <MenuItem onClick={() => handleAction("report")} sx={{ gap: 1.5 }}>
+              <WarningOctagon size={18} />
+              <Typography variant="body2">Report</Typography>
+            </MenuItem>
 
-        <Divider sx={{ my: 0.5 }} />
+            <Divider sx={{ my: 0.5 }} />
 
-        <MenuItem
-          onClick={() => handleAction("delete")}
-          sx={{ gap: 1.5, color: "error.main" }}
-        >
-          <Trash size={18} />
-          <Typography variant="body2" color="error">
-            Delete Message
-          </Typography>
-        </MenuItem>
+            <MenuItem
+              onClick={() => handleAction("delete")}
+              sx={{ gap: 1.5, color: "error.main" }}
+            >
+              <Trash size={18} />
+              <Typography variant="body2" color="error">
+                Delete Message
+              </Typography>
+            </MenuItem>
+          </>
+        ) : (
+          <MenuItem
+            onClick={() => handleAction("delete")}
+            sx={{ gap: 1.5, color: "error.main" }}
+          >
+            <Trash size={18} />
+            <Typography variant="body2" color="error">
+              Delete for me
+            </Typography>
+          </MenuItem>
+        )}
       </Menu>
 
       {/* Reaction Popover */}
@@ -268,7 +283,7 @@ const MessageBubble = ({ el, children }) => {
         }}
       >
         {/* Star Icon in top-corner */}
-        {el.starred && (
+        {el.starred && !el.deleted && (
           <Box
             sx={{
               position: "absolute",
@@ -290,7 +305,7 @@ const MessageBubble = ({ el, children }) => {
         )}
 
         {/* Quoted Reply Box if present */}
-        {el.reply && (
+        {el.reply && !el.deleted && (
           <Box
             sx={{
               mb: 1,
@@ -347,7 +362,7 @@ const MessageBubble = ({ el, children }) => {
         </Box>
 
         {/* Reaction badge */}
-        {el.reaction && (
+        {el.reaction && !el.deleted && (
           <Box
             onClick={handleToggleReaction}
             title="Click to remove reaction"
@@ -383,11 +398,50 @@ const MessageBubble = ({ el, children }) => {
 };
 
 /* =========================
+   DELETED MESSAGE (WhatsApp style)
+========================= */
+
+const DeletedMsg = ({ el }) => {
+  const theme = useTheme();
+
+  return (
+    <MessageBubble el={el}>
+      <Stack direction="row" alignItems="center" spacing={0.75} sx={{ py: 0.25, px: 0.25 }}>
+        <Prohibit
+          size={16}
+          weight="bold"
+          style={{
+            opacity: 0.7,
+            color: el.incoming ? theme.palette.text.secondary : "#fff",
+          }}
+        />
+        <Typography
+          variant="body2"
+          sx={{
+            fontStyle: "italic",
+            color: el.incoming
+              ? theme.palette.text.secondary
+              : "rgba(255,255,255,0.85)",
+            wordBreak: "break-word",
+          }}
+        >
+          {el.outgoing ? "You deleted this message" : "This message was deleted"}
+        </Typography>
+      </Stack>
+    </MessageBubble>
+  );
+};
+
+/* =========================
    TEXT MESSAGE
 ========================= */
 
 const TextMsg = ({ el }) => {
   const theme = useTheme();
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
 
   return (
     <MessageBubble el={el}>
@@ -411,6 +465,10 @@ const TextMsg = ({ el }) => {
 
 const MediaMsg = ({ el }) => {
   const theme = useTheme();
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
 
   return (
     <MessageBubble el={el}>
@@ -454,6 +512,10 @@ const MediaMsg = ({ el }) => {
 const ReplyMsg = ({ el }) => {
   const theme = useTheme();
 
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
+
   return (
     <MessageBubble el={el}>
       <Typography
@@ -476,6 +538,10 @@ const ReplyMsg = ({ el }) => {
 
 const LinkMsg = ({ el }) => {
   const theme = useTheme();
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
 
   return (
     <MessageBubble el={el}>
@@ -536,6 +602,10 @@ const LinkMsg = ({ el }) => {
 
 const DocMsg = ({ el }) => {
   const theme = useTheme();
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
 
   return (
     <MessageBubble el={el}>

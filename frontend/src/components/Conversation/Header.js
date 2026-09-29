@@ -4,6 +4,12 @@ import {
   Avatar,
   Badge,
   Box,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogContentText,
+  DialogTitle,
   Divider,
   Fade,
   IconButton,
@@ -36,10 +42,13 @@ import {
 } from "../../redux/slices/app";
 import { StartAudioCall } from "../../redux/slices/audioCall";
 import { StartVideoCall } from "../../redux/slices/videoCall";
+import { socket } from "../../socket";
 import {
   CloseSearch,
   SetSearchQuery,
   ToggleSearch,
+  DeleteDirectConversation,
+  ClearDirectMessages,
 } from "../../redux/slices/Conversation";
 import getAvatarUrl from "../../utils/getAvatarUrl";
 import {
@@ -83,7 +92,7 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
 const Conversation_Menu = [
   { title: "Contact info" },
   { title: "Mute notifications" },
-  { title: "Clear messages" },
+  { title: "Clear chat" },
   { title: "Delete chat" },
 ];
 
@@ -101,6 +110,8 @@ const Header = () => {
 
   const [conversationMenuAnchorEl, setConversationMenuAnchorEl] =
     React.useState(null);
+  const [openDeleteChat, setOpenDeleteChat] = React.useState(false);
+  const [openClearChat, setOpenClearChat] = React.useState(false);
 
   const openConversationMenu = Boolean(conversationMenuAnchorEl);
 
@@ -112,9 +123,56 @@ const Header = () => {
     setConversationMenuAnchorEl(null);
   };
 
+  const authUserId = useSelector((state) => state.auth?.user_id);
   const current_user_id =
-    useSelector((state) => state.auth?.user_id) ||
+    authUserId ||
     (typeof window !== "undefined" ? window.localStorage.getItem("user_id") : null);
+
+  const handleMenuItemClick = (title) => {
+    handleCloseConversationMenu();
+    if (title === "Contact info") {
+      handleContactInfo();
+    } else if (title === "Clear chat" || title === "Clear messages") {
+      setOpenClearChat(true);
+    } else if (title === "Delete chat" || title === "Delete message") {
+      setOpenDeleteChat(true);
+    }
+  };
+
+  const handleConfirmClearChat = () => {
+    const convId = room_id || current_conversation?.id || current_conversation?._id;
+    if (!convId) return;
+    socket.emit("clear_chat", {
+      conversation_id: convId,
+      user_id: current_user_id,
+    });
+    dispatch(ClearDirectMessages({ conversation_id: convId }));
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: "Chat cleared on your device",
+      })
+    );
+    setOpenClearChat(false);
+  };
+
+  const handleConfirmDeleteChat = () => {
+    const convId = room_id || current_conversation?.id || current_conversation?._id;
+    if (!convId) return;
+    socket.emit("delete_chat", {
+      conversation_id: convId,
+      user_id: current_user_id,
+    });
+    dispatch(DeleteDirectConversation({ conversation_id: convId }));
+    dispatch(SelectConversation({ room_id: null }));
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: "Chat deleted on your device",
+      })
+    );
+    setOpenDeleteChat(false);
+  };
 
   // Resolve recipient user ID
   const targetUserId = React.useMemo(() => {
@@ -378,10 +436,11 @@ const Header = () => {
               {Conversation_Menu.map((el) => (
                 <MenuItem
                   key={el.title}
-                  onClick={
-                    el.title === "Contact info"
-                      ? handleContactInfo
-                      : handleCloseConversationMenu
+                  onClick={() => handleMenuItemClick(el.title)}
+                  sx={
+                    el.title === "Delete chat"
+                      ? { color: "error.main" }
+                      : undefined
                   }
                 >
                   {el.title}
@@ -391,6 +450,58 @@ const Header = () => {
           </Menu>
         </Stack>
       </Stack>
+
+      {/* Clear Messages Dialog */}
+      <Dialog
+        open={openClearChat}
+        onClose={() => setOpenClearChat(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Clear this chat?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to clear messages in this chat? Messages will be
+            deleted from your device only. The other person will still see their messages.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenClearChat(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmClearChat}
+          >
+            Clear chat
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Delete Chat Dialog */}
+      <Dialog
+        open={openDeleteChat}
+        onClose={() => setOpenDeleteChat(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle>Delete this chat?</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete this chat? This chat and its messages will
+            be deleted from your device only. The other person will still have their chat.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setOpenDeleteChat(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={handleConfirmDeleteChat}
+          >
+            Delete chat
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* SEARCH BAR ROW */}
       {open_search && (

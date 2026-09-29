@@ -34,11 +34,14 @@ import { useDispatch, useSelector } from "react-redux";
 
 import {
   CloseSidebar,
+  SelectConversation,
   UpdateSidebarType,
   showSnackbar,
 } from "../redux/slices/app";
 import { StartAudioCall } from "../redux/slices/audioCall";
 import { StartVideoCall } from "../redux/slices/videoCall";
+import { socket } from "../socket";
+import { DeleteDirectConversation } from "../redux/slices/Conversation";
 
 import AntSwitch from "./AntSwitch";
 import getAvatarUrl, { getMockAvatar } from "../utils/getAvatarUrl";
@@ -47,7 +50,7 @@ const Transition = React.forwardRef(function Transtion(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />
 })
 
-const BlockDialog = (open, handleClose) => {
+const BlockDialog = ({ open, handleClose }) => {
   return (
     <Dialog
         open={open}
@@ -75,7 +78,34 @@ const BlockDialog = (open, handleClose) => {
   );
 };
 
-const DeleteDialog = (open, handleClose) => {
+const DeleteDialog = ({ open, handleClose }) => {
+  const dispatch = useDispatch();
+  const { current_conversation } = useSelector(
+    (state) => state.conversation.direct_chat
+  );
+  const { room_id } = useSelector((state) => state.app);
+  const current_user_id = window.localStorage.getItem("user_id");
+
+  const handleDelete = () => {
+    const convId = current_conversation?.id || room_id;
+    if (convId) {
+      socket.emit("delete_chat", {
+        conversation_id: convId,
+        user_id: current_user_id,
+      });
+      dispatch(DeleteDirectConversation({ conversation_id: convId }));
+      dispatch(SelectConversation({ room_id: null }));
+      dispatch(CloseSidebar());
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: "Chat deleted on your device",
+        })
+      );
+    }
+    handleClose();
+  };
+
   return (
     <Dialog
         open={open}
@@ -87,17 +117,21 @@ const DeleteDialog = (open, handleClose) => {
         aria-describedby="alert-dialog-slide-description"
         role="alertdialog"
       >
-        <DialogTitle>Delete this chat</DialogTitle>
+        <DialogTitle>Delete this chat?</DialogTitle>
         <DialogContent>
           <DialogContentText id="alert-dialog-slide-description">
-           Are you sure you want to Delete this contact ?
+            Are you sure you want to delete this chat? This chat and its messages
+            will be deleted from your device only. The other person will still
+            have their chat.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
           <Button onClick={handleClose} autoFocus>
            Cancel
           </Button>
-          <Button onClick={handleClose}>Yes</Button>
+          <Button variant="contained" color="error" onClick={handleDelete}>
+            Delete chat
+          </Button>
         </DialogActions>
       </Dialog>
   );
@@ -472,7 +506,7 @@ const Contact = () => {
         </Stack>
       </Stack>
       {openBlock && <BlockDialog open={openBlock} handleClose={handleCloseBlock} />}
-      {openDelete && <BlockDialog open={openDelete} handleClose={handleCloseDelete} />}
+      {openDelete && <DeleteDialog open={openDelete} handleClose={handleCloseDelete} />}
 
     </Box>
   );

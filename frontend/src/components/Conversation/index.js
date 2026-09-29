@@ -17,6 +17,8 @@ const Conversation = () => {
   const { conversations } = useSelector(
     (state) => state.conversation.direct_chat
   );
+  const { user_id } = useSelector((state) => state.auth);
+  const current_user_id = user_id || window.localStorage.getItem("user_id");
 
   useEffect(() => {
     if (room_id) {
@@ -27,14 +29,14 @@ const Conversation = () => {
 
       socket.emit(
         "get_messages",
-        { conversation_id: room_id },
+        { conversation_id: room_id, user_id: current_user_id },
         (messages) => {
           console.log("Fetched messages from backend:", messages);
           dispatch(FetchCurrentMessages({ messages: messages || [] }));
         }
       );
     }
-  }, [room_id, conversations, dispatch]);
+  }, [room_id, dispatch]);
   return (
     <Stack
       sx={{

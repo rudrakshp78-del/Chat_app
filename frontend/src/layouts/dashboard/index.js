@@ -22,6 +22,8 @@ import {
   DeleteDirectMessage,
   ReactDirectMessage,
   StarDirectMessage,
+  DeleteDirectConversation,
+  ClearDirectMessages,
 } from "../../redux/slices/Conversation";
 
 import {
@@ -100,7 +102,13 @@ const DashboardLayout = () => {
 
     if (!socket.connected) {
       connectSocket(user_id);
+    } else {
+      socket.emit("user_connected", { user_id });
     }
+
+    socket.on("connect", () => {
+      socket.emit("user_connected", { user_id });
+    });
 
     // New message
     socket.on("new_message", (data) => {
@@ -130,6 +138,8 @@ const DashboardLayout = () => {
             deleted: !!message.deleted,
             incoming,
             outgoing,
+            from: (message.from?._id || message.from)?.toString(),
+            to: (message.to?._id || message.to)?.toString(),
           }),
         );
       }
@@ -151,6 +161,21 @@ const DashboardLayout = () => {
     socket.on("message_starred", (data) => {
       console.log("MESSAGE STARRED:", data);
       dispatch(StarDirectMessage(data));
+    });
+
+    // Chat Deleted (on this device only)
+    socket.on("chat_deleted", (data) => {
+      console.log("CHAT DELETED:", data);
+      dispatch(DeleteDirectConversation(data));
+      if (room_id && data.conversation_id && room_id.toString() === data.conversation_id.toString()) {
+        dispatch(SelectConversation({ room_id: null }));
+      }
+    });
+
+    // Chat Cleared (on this device only)
+    socket.on("chat_cleared", (data) => {
+      console.log("CHAT CLEARED:", data);
+      dispatch(ClearDirectMessages(data));
     });
 
     // Start chat
@@ -232,6 +257,8 @@ const DashboardLayout = () => {
       socket?.off("start_chat");
       socket?.off("new_message");
       socket?.off("message_deleted");
+      socket?.off("chat_deleted");
+      socket?.off("chat_cleared");
       socket?.off("message_reacted");
       socket?.off("message_starred");
       socket?.off("audio_call_notification");

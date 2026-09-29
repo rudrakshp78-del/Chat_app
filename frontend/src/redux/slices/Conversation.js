@@ -142,6 +142,8 @@ const slice = createSlice({
           deleted: !!el.deleted,
           incoming,
           outgoing,
+          from: fromId,
+          to: (el.to?._id || el.to)?.toString(),
         };
       });
       state.direct_chat.current_messages = formatted_messages;
@@ -163,10 +165,59 @@ const slice = createSlice({
       state.direct_chat.replying_to = null;
     },
     deleteDirectMessage(state, action) {
-      const { message_id } = action.payload;
-      state.direct_chat.current_messages = state.direct_chat.current_messages.filter(
-        (m) => m.id?.toString() !== message_id?.toString()
-      );
+      const { message_id, conversation_id, delete_for } = action.payload;
+
+      if (delete_for === "everyone") {
+        // WhatsApp style: mark message as deleted so bubble displays "This message was deleted"
+        state.direct_chat.current_messages = state.direct_chat.current_messages.map((m) => {
+          if (m.id?.toString() === message_id?.toString()) {
+            return {
+              ...m,
+              deleted: true,
+              message: "",
+              file: "",
+              reply: "",
+              reaction: "",
+            };
+          }
+          return m;
+        });
+      } else {
+        // Delete for me: remove message completely from current user's view
+        state.direct_chat.current_messages = state.direct_chat.current_messages.filter(
+          (m) => m.id?.toString() !== message_id?.toString()
+        );
+      }
+
+      const convId = conversation_id || state.direct_chat.current_conversation?.id;
+      if (convId) {
+        const remainingMsgs = state.direct_chat.current_messages;
+        const lastMsg = remainingMsgs.length > 0 ? remainingMsgs[remainingMsgs.length - 1] : null;
+        let preview = "No messages yet";
+        if (lastMsg) {
+          if (lastMsg.deleted) {
+            preview = lastMsg.outgoing ? "You deleted this message" : "This message was deleted";
+          } else {
+            preview = lastMsg.message || (lastMsg.file ? "Attachment" : "No messages yet");
+          }
+        }
+
+        state.direct_chat.conversations = state.direct_chat.conversations.map((c) => {
+          if (c.id?.toString() === convId?.toString()) {
+            return {
+              ...c,
+              msg: preview,
+            };
+          }
+          return c;
+        });
+        if (state.direct_chat.current_conversation?.id?.toString() === convId?.toString()) {
+          state.direct_chat.current_conversation = {
+            ...state.direct_chat.current_conversation,
+            msg: preview,
+          };
+        }
+      }
     },
     reactDirectMessage(state, action) {
       const { message_id, reaction } = action.payload;
@@ -176,6 +227,60 @@ const slice = createSlice({
         }
         return m;
       });
+    },
+    deleteDirectConversation(state, action) {
+      const conversation_id = action.payload?.conversation_id;
+      if (!conversation_id) {
+        state.direct_chat.current_conversation = null;
+        state.direct_chat.current_messages = [];
+        return;
+      }
+      state.direct_chat.conversations = state.direct_chat.conversations.filter(
+        (c) =>
+          c.id?.toString() !== conversation_id?.toString() &&
+          c._id?.toString() !== conversation_id?.toString()
+      );
+      if (
+        state.direct_chat.current_conversation?.id?.toString() === conversation_id?.toString() ||
+        state.direct_chat.current_conversation?._id?.toString() === conversation_id?.toString()
+      ) {
+        state.direct_chat.current_conversation = null;
+        state.direct_chat.current_messages = [];
+      }
+    },
+    clearDirectMessages(state, action) {
+      const conversation_id = action.payload?.conversation_id;
+      if (
+        !conversation_id ||
+        state.direct_chat.current_conversation?.id?.toString() === conversation_id?.toString() ||
+        state.direct_chat.current_conversation?._id?.toString() === conversation_id?.toString()
+      ) {
+        state.direct_chat.current_messages = [];
+      }
+      if (conversation_id) {
+        state.direct_chat.conversations = state.direct_chat.conversations.map((c) => {
+          if (
+            c.id?.toString() === conversation_id?.toString() ||
+            c._id?.toString() === conversation_id?.toString()
+          ) {
+            return {
+              ...c,
+              msg: "No messages yet",
+            };
+          }
+          return c;
+        });
+        if (
+          state.direct_chat.current_conversation &&
+          (state.direct_chat.current_conversation?.id?.toString() === conversation_id?.toString() ||
+            state.direct_chat.current_conversation?._id?.toString() === conversation_id?.toString())
+        ) {
+          state.direct_chat.current_conversation = {
+            ...state.direct_chat.current_conversation,
+            msg: "No messages yet",
+          };
+        }
+      }
     },
     starDirectMessage(state, action) {
       const { message_id, starred } = action.payload;
@@ -308,6 +413,18 @@ export const ReactDirectMessage = (payload) => {
 export const StarDirectMessage = (payload) => {
   return async (dispatch) => {
     dispatch(slice.actions.starDirectMessage(payload));
+  };
+};
+
+export const DeleteDirectConversation = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.deleteDirectConversation(payload));
+  };
+};
+
+export const ClearDirectMessages = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.clearDirectMessages(payload));
   };
 };
 
