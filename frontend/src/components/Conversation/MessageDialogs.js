@@ -216,29 +216,60 @@ export const ReportDialog = ({ open, handleClose, message }) => {
 export const DeleteMessageDialog = ({ open, handleClose, message }) => {
   const dispatch = useDispatch();
   const { room_id } = useSelector((state) => state.app);
+  const { user_id } = useSelector((state) => state.auth);
+  const current_user_id = user_id || window.localStorage.getItem("user_id");
 
-  const handleDelete = () => {
+  // Determine if this message was sent by the current user:
+  const isSender = Boolean(
+    message?.outgoing ||
+      (message?.from &&
+        (message.from?._id || message.from)?.toString() ===
+          current_user_id?.toString())
+  );
+
+  const isAlreadyDeleted = Boolean(message?.deleted);
+
+  const handleDelete = (deleteType) => {
     if (!message?.id) {
       handleClose();
       return;
     }
 
-    socket.emit("delete_message", {
-      conversation_id: room_id,
-      message_id: message.id,
-    });
+    socket.emit(
+      "delete_message",
+      {
+        conversation_id: room_id,
+        message_id: message.id,
+        delete_for: deleteType, // "me" | "everyone"
+        user_id: current_user_id,
+      },
+      (res) => {
+        if (res?.status === "error") {
+          dispatch(
+            showSnackbar({
+              severity: "error",
+              message: res.message || "Failed to delete message",
+            })
+          );
+        }
+      }
+    );
 
     dispatch(
       DeleteDirectMessage({
         conversation_id: room_id,
         message_id: message.id,
+        delete_for: deleteType,
       })
     );
 
     dispatch(
       showSnackbar({
         severity: "success",
-        message: "Message deleted",
+        message:
+          deleteType === "everyone"
+            ? "Message deleted for everyone"
+            : "Message deleted for you",
       })
     );
 
@@ -247,18 +278,46 @@ export const DeleteMessageDialog = ({ open, handleClose, message }) => {
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-      <DialogTitle>Delete Message?</DialogTitle>
-      <DialogContent>
+      <DialogTitle sx={{ pb: 1 }}>Delete message?</DialogTitle>
+      <DialogContent sx={{ pb: 2 }}>
         <DialogContentText>
-          Are you sure you want to delete this message? This action will remove
-          the message for everyone in the conversation.
+          {isAlreadyDeleted
+            ? "Delete this message from your chat history?"
+            : isSender
+            ? "You can delete this message for everyone or delete it just for yourself."
+            : "Delete message for yourself? Other participants in the chat will still be able to see it."}
         </DialogContentText>
       </DialogContent>
-      <DialogActions>
-        <Button onClick={handleClose}>Cancel</Button>
-        <Button variant="contained" color="error" onClick={handleDelete}>
-          Delete
+      <DialogActions
+        sx={{
+          flexDirection: { xs: "column-reverse", sm: "row" },
+          gap: 1,
+          px: 3,
+          pb: 2.5,
+          pt: 1,
+        }}
+      >
+        <Button onClick={handleClose} color="inherit" sx={{ minWidth: 80 }}>
+          Cancel
         </Button>
+        <Button
+          variant={isSender && !isAlreadyDeleted ? "outlined" : "contained"}
+          color={isSender && !isAlreadyDeleted ? "primary" : "error"}
+          onClick={() => handleDelete("me")}
+          sx={{ minWidth: 120 }}
+        >
+          Delete for me
+        </Button>
+        {isSender && !isAlreadyDeleted && (
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => handleDelete("everyone")}
+            sx={{ minWidth: 155 }}
+          >
+            Delete for everyone
+          </Button>
+        )}
       </DialogActions>
     </Dialog>
   );
