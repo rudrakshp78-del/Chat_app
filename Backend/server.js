@@ -137,13 +137,33 @@ async function startServer() {
         console.log(`User connected: ${socket_id}`);
         console.log(`User ID: ${user_id}`);
 
-        // Save socket ID to user
+        socket.user_id = user_id ? user_id.toString() : null;
+
+        // Save socket ID to user & join personal room
         if (Boolean(user_id)) {
+          socket.join(user_id.toString());
           await User.findByIdAndUpdate(user_id, {
             socket_id,
             status: "Online",
           });
         }
+
+        socket.on("user_connected", async (data) => {
+          try {
+            const uid = (data?.user_id || socket.handshake.query["user_id"])?.toString();
+            if (uid) {
+              socket.user_id = uid;
+              socket.join(uid);
+              await User.findByIdAndUpdate(uid, {
+                socket_id: socket.id,
+                status: "Online",
+              });
+              console.log(`User connected and joined room: ${uid}`);
+            }
+          } catch (e) {
+            console.error("user_connected error:", e);
+          }
+        });
 
         // ========================================
         // FRIEND REQUEST
@@ -307,21 +327,52 @@ async function startServer() {
         // END CONNECTION & CHAT HANDLERS
         // ========================================
 
-        socket.on("get_direct_conversations", async ({ user_id }, callback) => {
+        socket.on("get_direct_conversations", async ({ user_id: req_user_id }, callback) => {
           try {
-            if (!user_id) {
+            const currentUserId = (socket.user_id || user_id || req_user_id)?.toString();
+            if (!currentUserId) {
               if (typeof callback === "function") callback([]);
               return;
             }
 
             const existing_conversations = await OneToOneMessage.find({
-              participants: { $all: [user_id] },
+              participants: { $all: [currentUserId] },
             }).populate("participants", "firstName lastName _id email status");
 
             console.log("Direct conversations found:", existing_conversations.length);
 
+            // Filter out messages that were deleted for this user
+            const filteredConversations = existing_conversations
+              .map((conv) => {
+                const convObj = conv.toObject ? conv.toObject() : JSON.parse(JSON.stringify(conv));
+                if (convObj.messages && Array.isArray(convObj.messages)) {
+                  convObj.messages = convObj.messages.filter((msg) => {
+                    if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
+                      return !msg.deleted_for.some(
+                        (uid) => (uid?._id || uid)?.toString() === currentUserId
+                      );
+                    }
+                    return true;
+                  });
+                }
+                return convObj;
+              })
+              .filter((conv) => {
+                // If user deleted this chat and there are no messages left for this user, do not show in sidebar
+                const isChatDeletedForUser =
+                  conv.deleted_for &&
+                  Array.isArray(conv.deleted_for) &&
+                  conv.deleted_for.some(
+                    (uid) => (uid?._id || uid)?.toString() === currentUserId
+                  );
+                if (isChatDeletedForUser && (!conv.messages || conv.messages.length === 0)) {
+                  return false;
+                }
+                return true;
+              });
+
             if (typeof callback === "function") {
-              callback(existing_conversations);
+              callback(filteredConversations);
             }
           } catch (err) {
             console.error("get_direct_conversations error:", err);
@@ -369,15 +420,34 @@ async function startServer() {
               console.log("Created new chat:", existing_conversation._id);
             }
 
-            // emit to current user socket
-            socket.emit("start_chat", existing_conversation);
-            socket.emit("open_chat", existing_conversation);
+            const formatForUser = (conv, targetUserId) => {
+              const obj = conv.toObject ? conv.toObject() : JSON.parse(JSON.stringify(conv));
+              if (obj.messages && Array.isArray(obj.messages)) {
+                obj.messages = obj.messages.filter((msg) => {
+                  if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
+                    return !msg.deleted_for.some(
+                      (uid) => (uid?._id || uid)?.toString() === targetUserId?.toString()
+                    );
+                  }
+                  return true;
+                });
+              }
+              return obj;
+            };
+
+            // emit to current user socket and room
+            socket.emit("start_chat", formatForUser(existing_conversation, from));
+            socket.emit("open_chat", formatForUser(existing_conversation, from));
+            io.to(from.toString()).emit("start_chat", formatForUser(existing_conversation, from));
+            io.to(from.toString()).emit("open_chat", formatForUser(existing_conversation, from));
 
             // if receiver is online, emit to them as well
+            io.to(to.toString()).emit("start_chat", formatForUser(existing_conversation, to));
+            io.to(to.toString()).emit("open_chat", formatForUser(existing_conversation, to));
             const to_user = await User.findById(to).select("socket_id");
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("start_chat", existing_conversation);
-              io.to(to_user.socket_id).emit("open_chat", existing_conversation);
+            if (to_user?.socket_id && to_user.socket_id !== socket.id) {
+              io.to(to_user.socket_id).emit("start_chat", formatForUser(existing_conversation, to));
+              io.to(to_user.socket_id).emit("open_chat", formatForUser(existing_conversation, to));
             }
           } catch (err) {
             console.error("start_conversation error:", err);
@@ -392,9 +462,19 @@ async function startServer() {
             }
 
             const chat = await OneToOneMessage.findById(data.conversation_id).select("messages");
+            const currentUserId = (socket.user_id || user_id || data?.user_id)?.toString();
+
+            const messages = (chat?.messages || []).filter((msg) => {
+              if (currentUserId && msg.deleted_for && Array.isArray(msg.deleted_for)) {
+                return !msg.deleted_for.some(
+                  (uid) => (uid?._id || uid)?.toString() === currentUserId
+                );
+              }
+              return true;
+            });
 
             if (typeof callback === "function") {
-              callback(chat?.messages || []);
+              callback(messages);
             }
           } catch (err) {
             console.error("get_messages error:", err);
@@ -445,6 +525,13 @@ async function startServer() {
                 participants: [to, from],
                 messages: [],
               });
+            }
+
+            // If the chat was marked deleted for either user, unmark it so the new message appears
+            if (chat.deleted_for && Array.isArray(chat.deleted_for)) {
+              chat.deleted_for = chat.deleted_for.filter(
+                (uid) => uid.toString() !== to.toString() && uid.toString() !== from.toString()
+              );
             }
 
             chat.messages.push(new_message);
@@ -528,6 +615,13 @@ async function startServer() {
               });
             }
 
+            // If the chat was marked deleted for either user, unmark it so the new message appears
+            if (chat.deleted_for && Array.isArray(chat.deleted_for)) {
+              chat.deleted_for = chat.deleted_for.filter(
+                (uid) => uid.toString() !== to.toString() && uid.toString() !== from.toString()
+              );
+            }
+
             chat.messages.push(new_message);
             await chat.save({ validateModifiedOnly: true });
 
@@ -566,38 +660,316 @@ async function startServer() {
           }
         });
 
-        // Delete Message
+        // Delete Message (WhatsApp style: Delete for Me vs Delete for Everyone)
         socket.on("delete_message", async (data, callback) => {
           try {
             console.log("Delete message request:", data);
-            const { conversation_id, message_id } = data;
-            if (!conversation_id || !message_id) return;
+            const { conversation_id, message_id, delete_for = "me" } = data;
+            if (!conversation_id || !message_id) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Missing conversation_id or message_id" });
+              }
+              return;
+            }
+
+            const currentUserId = (socket.user_id || user_id || data.user_id)?.toString();
+            if (!currentUserId) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "User not authenticated" });
+              }
+              return;
+            }
 
             const chat = await OneToOneMessage.findById(conversation_id);
-            if (!chat) return;
+            if (!chat) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Conversation not found" });
+              }
+              return;
+            }
 
-            // Remove message from chat
-            chat.messages = chat.messages.filter(
-              (m) => m._id.toString() !== message_id.toString()
+            const msgIndex = chat.messages.findIndex(
+              (m) => m._id.toString() === message_id.toString()
             );
-            await chat.save({ validateModifiedOnly: true });
+            if (msgIndex === -1) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Message not found" });
+              }
+              return;
+            }
 
-            // Notify both participants
-            for (const participantId of chat.participants) {
-              const user = await User.findById(participantId).select("socket_id");
-              if (user?.socket_id) {
-                io.to(user.socket_id).emit("message_deleted", {
+            const msg = chat.messages[msgIndex];
+
+            if (delete_for === "everyone") {
+              // SECURITY CHECK: ONLY THE SENDER CAN DELETE FOR EVERYONE
+              const senderId = (msg.from?._id || msg.from)?.toString();
+              if (senderId !== currentUserId) {
+                console.warn(
+                  `Unauthorized delete for everyone attempt by ${currentUserId} on message sent by ${senderId}`
+                );
+                if (typeof callback === "function") {
+                  callback({
+                    status: "error",
+                    message: "You can only delete your own sent messages for everyone.",
+                  });
+                }
+                return;
+              }
+
+              // WhatsApp style: mark message as deleted for everyone
+              msg.deleted = true;
+              msg.text = "";
+              msg.file = "";
+              msg.reply = "";
+              msg.reaction = "";
+              chat.markModified("messages");
+              await chat.save();
+
+              // Notify both participants in this chat
+              for (const participantId of chat.participants) {
+                const pIdStr = (participantId?._id || participantId)?.toString();
+                io.to(pIdStr).emit("message_deleted", {
                   conversation_id,
                   message_id,
+                  delete_for: "everyone",
+                  deleted_by: currentUserId,
+                });
+                const pUser = await User.findById(participantId).select("socket_id");
+                if (pUser?.socket_id) {
+                  io.to(pUser.socket_id).emit("message_deleted", {
+                    conversation_id,
+                    message_id,
+                    delete_for: "everyone",
+                    deleted_by: currentUserId,
+                  });
+                }
+              }
+
+              // Also ensure emitting directly to caller socket
+              socket.emit("message_deleted", {
+                conversation_id,
+                message_id,
+                delete_for: "everyone",
+                deleted_by: currentUserId,
+              });
+
+              if (typeof callback === "function") {
+                callback({ status: "success", delete_for: "everyone" });
+              }
+            } else {
+              // DELETE FOR ME: Can delete any message (incoming or outgoing) for current user only
+              if (!msg.deleted_for) {
+                msg.deleted_for = [];
+              }
+
+              const alreadyDeleted = msg.deleted_for.some(
+                (uid) => (uid?._id || uid)?.toString() === currentUserId
+              );
+              if (!alreadyDeleted) {
+                msg.deleted_for.push(currentUserId);
+              }
+
+              // If all participants in the conversation have deleted this message for themselves, purge it
+              const allParticipantsDeleted =
+                chat.participants &&
+                chat.participants.length > 0 &&
+                chat.participants.every((pId) =>
+                  msg.deleted_for.some(
+                    (uid) => (uid?._id || uid)?.toString() === (pId?._id || pId)?.toString()
+                  )
+                );
+
+              if (allParticipantsDeleted) {
+                chat.messages.splice(msgIndex, 1);
+              }
+
+              chat.markModified("messages");
+              await chat.save();
+
+              // CRITICAL: Notify ONLY the requesting user's sockets & room!
+              // The other participant's device is NOT notified and remains completely untouched!
+              io.to(currentUserId).emit("message_deleted", {
+                conversation_id,
+                message_id,
+                delete_for: "me",
+              });
+
+              const currentUserDoc = await User.findById(currentUserId).select("socket_id");
+              if (currentUserDoc?.socket_id && currentUserDoc.socket_id !== socket.id) {
+                io.to(currentUserDoc.socket_id).emit("message_deleted", {
+                  conversation_id,
+                  message_id,
+                  delete_for: "me",
                 });
               }
+              socket.emit("message_deleted", {
+                conversation_id,
+                message_id,
+                delete_for: "me",
+              });
+
+              if (typeof callback === "function") {
+                callback({ status: "success", delete_for: "me" });
+              }
             }
+          } catch (err) {
+            console.error("delete_message error:", err);
+            if (typeof callback === "function") {
+              callback({ status: "error", message: err.message });
+            }
+          }
+        });
+
+        // ========================================
+        // DELETE CHAT (Deletes entire chat for requesting user ONLY)
+        // ========================================
+        socket.on("delete_chat", async (data, callback) => {
+          try {
+            console.log("Delete chat request:", data);
+            const { conversation_id } = data;
+            if (!conversation_id) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Missing conversation_id" });
+              }
+              return;
+            }
+
+            const currentUserId = (socket.user_id || user_id || data.user_id)?.toString();
+            if (!currentUserId) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "User not authenticated" });
+              }
+              return;
+            }
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Conversation not found" });
+              }
+              return;
+            }
+
+            // Mark the chat itself as deleted for the requesting user
+            if (!chat.deleted_for) chat.deleted_for = [];
+            if (!chat.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+              chat.deleted_for.push(currentUserId);
+            }
+
+            // Mark ALL existing messages in this conversation as deleted for the requesting user
+            if (chat.messages && Array.isArray(chat.messages)) {
+              chat.messages.forEach((msg) => {
+                if (!msg.deleted_for) msg.deleted_for = [];
+                if (!msg.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+                  msg.deleted_for.push(currentUserId);
+                }
+              });
+            }
+
+            // If ALL participants have deleted this chat, purge messages
+            const allParticipantsDeleted =
+              chat.participants &&
+              chat.participants.length > 0 &&
+              chat.participants.every((pId) =>
+                chat.deleted_for.some((uid) => uid.toString() === (pId?._id || pId)?.toString())
+              );
+            if (allParticipantsDeleted) {
+              chat.messages = [];
+            }
+
+            chat.markModified("messages");
+            chat.markModified("deleted_for");
+            await chat.save();
+
+            // CRITICAL: Notify ONLY the requesting user's sockets & room!
+            io.to(currentUserId).emit("chat_deleted", {
+              conversation_id,
+            });
+
+            const currentUserDoc = await User.findById(currentUserId).select("socket_id");
+            if (currentUserDoc?.socket_id && currentUserDoc.socket_id !== socket.id) {
+              io.to(currentUserDoc.socket_id).emit("chat_deleted", {
+                conversation_id,
+              });
+            }
+            socket.emit("chat_deleted", {
+              conversation_id,
+            });
 
             if (typeof callback === "function") {
               callback({ status: "success" });
             }
           } catch (err) {
-            console.error("delete_message error:", err);
+            console.error("delete_chat error:", err);
+            if (typeof callback === "function") {
+              callback({ status: "error", message: err.message });
+            }
+          }
+        });
+
+        // ========================================
+        // CLEAR CHAT (Clears messages for requesting user ONLY)
+        // ========================================
+        socket.on("clear_chat", async (data, callback) => {
+          try {
+            console.log("Clear chat request:", data);
+            const { conversation_id } = data;
+            if (!conversation_id) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Missing conversation_id" });
+              }
+              return;
+            }
+
+            const currentUserId = (socket.user_id || user_id || data.user_id)?.toString();
+            if (!currentUserId) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "User not authenticated" });
+              }
+              return;
+            }
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) {
+              if (typeof callback === "function") {
+                callback({ status: "error", message: "Conversation not found" });
+              }
+              return;
+            }
+
+            // Mark ALL existing messages as deleted for this user
+            if (chat.messages && Array.isArray(chat.messages)) {
+              chat.messages.forEach((msg) => {
+                if (!msg.deleted_for) msg.deleted_for = [];
+                if (!msg.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+                  msg.deleted_for.push(currentUserId);
+                }
+              });
+            }
+
+            chat.markModified("messages");
+            await chat.save();
+
+            // Notify ONLY the requesting user's sockets & room!
+            io.to(currentUserId).emit("chat_cleared", {
+              conversation_id,
+            });
+
+            const currentUserDoc = await User.findById(currentUserId).select("socket_id");
+            if (currentUserDoc?.socket_id && currentUserDoc.socket_id !== socket.id) {
+              io.to(currentUserDoc.socket_id).emit("chat_cleared", {
+                conversation_id,
+              });
+            }
+            socket.emit("chat_cleared", {
+              conversation_id,
+            });
+
+            if (typeof callback === "function") {
+              callback({ status: "success" });
+            }
+          } catch (err) {
+            console.error("clear_chat error:", err);
             if (typeof callback === "function") {
               callback({ status: "error", message: err.message });
             }

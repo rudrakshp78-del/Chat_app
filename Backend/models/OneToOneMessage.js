@@ -46,6 +46,18 @@ const oneToOneMessageSchema = new mongoose.Schema({
         type: Boolean,
         default: false,
       },
+      deleted_for: [
+        {
+          type: mongoose.Schema.ObjectId,
+          ref: "User",
+        },
+      ],
+    },
+  ],
+  deleted_for: [
+    {
+      type: mongoose.Schema.ObjectId,
+      ref: "User",
     },
   ],
 });
