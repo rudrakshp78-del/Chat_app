@@ -842,7 +842,15 @@ async function startServer() {
               return;
             }
 
-            const chat = await OneToOneMessage.findById(conversation_id);
+            let chat = null;
+            if (mongoose.Types.ObjectId.isValid(conversation_id)) {
+              chat = await OneToOneMessage.findById(conversation_id);
+            }
+            if (!chat && mongoose.Types.ObjectId.isValid(conversation_id) && mongoose.Types.ObjectId.isValid(currentUserId)) {
+              chat = await OneToOneMessage.findOne({
+                participants: { $size: 2, $all: [conversation_id, currentUserId] },
+              });
+            }
             if (!chat) {
               if (typeof callback === "function") {
                 callback({ status: "error", message: "Conversation not found" });
@@ -852,7 +860,7 @@ async function startServer() {
 
             // Mark the chat itself as deleted for the requesting user
             if (!chat.deleted_for) chat.deleted_for = [];
-            if (!chat.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+            if (!chat.deleted_for.some((uid) => (uid?._id || uid)?.toString() === currentUserId)) {
               chat.deleted_for.push(currentUserId);
             }
 
@@ -860,7 +868,7 @@ async function startServer() {
             if (chat.messages && Array.isArray(chat.messages)) {
               chat.messages.forEach((msg) => {
                 if (!msg.deleted_for) msg.deleted_for = [];
-                if (!msg.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+                if (!msg.deleted_for.some((uid) => (uid?._id || uid)?.toString() === currentUserId)) {
                   msg.deleted_for.push(currentUserId);
                 }
               });
@@ -871,7 +879,7 @@ async function startServer() {
               chat.participants &&
               chat.participants.length > 0 &&
               chat.participants.every((pId) =>
-                chat.deleted_for.some((uid) => uid.toString() === (pId?._id || pId)?.toString())
+                chat.deleted_for.some((uid) => (uid?._id || uid)?.toString() === (pId?._id || pId)?.toString())
               );
             if (allParticipantsDeleted) {
               chat.messages = [];
@@ -881,19 +889,21 @@ async function startServer() {
             chat.markModified("deleted_for");
             await chat.save();
 
+            const convIdStr = chat._id.toString();
+
             // CRITICAL: Notify ONLY the requesting user's sockets & room!
             io.to(currentUserId).emit("chat_deleted", {
-              conversation_id,
+              conversation_id: convIdStr,
             });
 
             const currentUserDoc = await User.findById(currentUserId).select("socket_id");
             if (currentUserDoc?.socket_id && currentUserDoc.socket_id !== socket.id) {
               io.to(currentUserDoc.socket_id).emit("chat_deleted", {
-                conversation_id,
+                conversation_id: convIdStr,
               });
             }
             socket.emit("chat_deleted", {
-              conversation_id,
+              conversation_id: convIdStr,
             });
 
             if (typeof callback === "function") {
@@ -929,7 +939,15 @@ async function startServer() {
               return;
             }
 
-            const chat = await OneToOneMessage.findById(conversation_id);
+            let chat = null;
+            if (mongoose.Types.ObjectId.isValid(conversation_id)) {
+              chat = await OneToOneMessage.findById(conversation_id);
+            }
+            if (!chat && mongoose.Types.ObjectId.isValid(conversation_id) && mongoose.Types.ObjectId.isValid(currentUserId)) {
+              chat = await OneToOneMessage.findOne({
+                participants: { $size: 2, $all: [conversation_id, currentUserId] },
+              });
+            }
             if (!chat) {
               if (typeof callback === "function") {
                 callback({ status: "error", message: "Conversation not found" });
@@ -941,7 +959,7 @@ async function startServer() {
             if (chat.messages && Array.isArray(chat.messages)) {
               chat.messages.forEach((msg) => {
                 if (!msg.deleted_for) msg.deleted_for = [];
-                if (!msg.deleted_for.some((uid) => uid.toString() === currentUserId)) {
+                if (!msg.deleted_for.some((uid) => (uid?._id || uid)?.toString() === currentUserId)) {
                   msg.deleted_for.push(currentUserId);
                 }
               });
@@ -950,19 +968,21 @@ async function startServer() {
             chat.markModified("messages");
             await chat.save();
 
+            const convIdStr = chat._id.toString();
+
             // Notify ONLY the requesting user's sockets & room!
             io.to(currentUserId).emit("chat_cleared", {
-              conversation_id,
+              conversation_id: convIdStr,
             });
 
             const currentUserDoc = await User.findById(currentUserId).select("socket_id");
             if (currentUserDoc?.socket_id && currentUserDoc.socket_id !== socket.id) {
               io.to(currentUserDoc.socket_id).emit("chat_cleared", {
-                conversation_id,
+                conversation_id: convIdStr,
               });
             }
             socket.emit("chat_cleared", {
-              conversation_id,
+              conversation_id: convIdStr,
             });
 
             if (typeof callback === "function") {
