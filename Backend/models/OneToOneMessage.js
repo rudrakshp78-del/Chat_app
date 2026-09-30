@@ -52,6 +52,18 @@ const oneToOneMessageSchema = new mongoose.Schema({
           ref: "User",
         },
       ],
+      status: {
+        type: String,
+        enum: ["sent", "delivered", "seen"],
+        default: "sent",
+      },
+      seen: {
+        type: Boolean,
+        default: false,
+      },
+      seen_at: {
+        type: Date,
+      },
     },
   ],
   deleted_for: [

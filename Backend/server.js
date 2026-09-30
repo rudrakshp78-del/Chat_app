@@ -121,6 +121,8 @@ async function startServer() {
       },
     });
 
+    app.set("io", io);
+
     server.listen(port, () => {
       console.log(`✅ App running on port ${port}`);
     });
@@ -139,6 +141,46 @@ async function startServer() {
 
         socket.user_id = user_id ? user_id.toString() : null;
 
+        const deliverPendingMessages = async (targetUserId) => {
+          try {
+            if (!targetUserId) return;
+            const targetIdStr = targetUserId.toString();
+            const pendingChats = await OneToOneMessage.find({
+              participants: targetIdStr,
+              "messages.to": targetIdStr,
+              "messages.status": "sent",
+            });
+
+            for (const chat of pendingChats) {
+              let updated = false;
+              chat.messages.forEach((msg) => {
+                if (
+                  (msg.to?._id || msg.to)?.toString() === targetIdStr &&
+                  msg.status === "sent"
+                ) {
+                  msg.status = "delivered";
+                  updated = true;
+                }
+              });
+
+              if (updated) {
+                await chat.save({ validateModifiedOnly: true });
+                chat.participants.forEach((pId) => {
+                  const pStr = (pId?._id || pId)?.toString();
+                  if (pStr !== targetIdStr) {
+                    io.to(pStr).emit("messages_delivered", {
+                      conversation_id: chat._id,
+                      user_id: targetIdStr,
+                    });
+                  }
+                });
+              }
+            }
+          } catch (err) {
+            console.error("deliverPendingMessages error:", err);
+          }
+        };
+
         // Save socket ID to user & join personal room
         if (Boolean(user_id)) {
           socket.join(user_id.toString());
@@ -146,6 +188,7 @@ async function startServer() {
             socket_id,
             status: "Online",
           });
+          deliverPendingMessages(user_id);
         }
 
         socket.on("user_connected", async (data) => {
@@ -158,6 +201,7 @@ async function startServer() {
                 socket_id: socket.id,
                 status: "Online",
               });
+              deliverPendingMessages(uid);
               console.log(`User connected and joined room: ${uid}`);
             }
           } catch (e) {
@@ -337,7 +381,7 @@ async function startServer() {
 
             const existing_conversations = await OneToOneMessage.find({
               participants: { $all: [currentUserId] },
-            }).populate("participants", "firstName lastName _id email status");
+            }).populate("participants", "firstName lastName _id email status avatar about links");
 
             console.log("Direct conversations found:", existing_conversations.length);
 
@@ -401,7 +445,7 @@ async function startServer() {
             // check if there is any existing conversation between these users 
             let existing_conversation = await OneToOneMessage.findOne({
               participants: { $size: 2, $all: [to, from] },
-            }).populate("participants", "firstName lastName _id email status");
+            }).populate("participants", "firstName lastName _id email status avatar about links");
 
             console.log("Existing Conversation:", existing_conversation ? existing_conversation._id : null);
 
@@ -414,7 +458,7 @@ async function startServer() {
 
               existing_conversation = await OneToOneMessage.findById(new_chat._id).populate(
                 "participants",
-                "firstName lastName _id email status"
+                "firstName lastName _id email status avatar about links"
               );
 
               console.log("Created new chat:", existing_conversation._id);
@@ -461,8 +505,40 @@ async function startServer() {
               return;
             }
 
-            const chat = await OneToOneMessage.findById(data.conversation_id).select("messages");
             const currentUserId = (socket.user_id || user_id || data?.user_id)?.toString();
+            const chat = await OneToOneMessage.findById(data.conversation_id);
+
+            if (chat && currentUserId) {
+              let hasUnseen = false;
+              chat.messages.forEach((msg) => {
+                const msgToStr = (msg.to?._id || msg.to)?.toString();
+                if (
+                  msgToStr === currentUserId &&
+                  !msg.seen &&
+                  msg.status !== "seen"
+                ) {
+                  msg.seen = true;
+                  msg.status = "seen";
+                  msg.seen_at = new Date();
+                  hasUnseen = true;
+                }
+              });
+
+              if (hasUnseen) {
+                await chat.save({ validateModifiedOnly: true });
+
+                // Notify other participants in real-time
+                chat.participants.forEach((pId) => {
+                  const pStr = (pId?._id || pId)?.toString();
+                  if (pStr !== currentUserId) {
+                    io.to(pStr).emit("messages_seen", {
+                      conversation_id: chat._id,
+                      reader_id: currentUserId,
+                    });
+                  }
+                });
+              }
+            }
 
             const messages = (chat?.messages || []).filter((msg) => {
               if (currentUserId && msg.deleted_for && Array.isArray(msg.deleted_for)) {
@@ -484,6 +560,55 @@ async function startServer() {
           }
         });
 
+        // Dedicated socket listener to mark messages as seen
+        socket.on("mark_messages_seen", async (data) => {
+          try {
+            const { conversation_id } = data || {};
+            const currentUserId = (socket.user_id || user_id || data?.user_id)?.toString();
+            if (!conversation_id || !currentUserId) return;
+
+            const chat = await OneToOneMessage.findById(conversation_id);
+            if (!chat) return;
+
+            let hasUnseen = false;
+            chat.messages.forEach((msg) => {
+              const msgToStr = (msg.to?._id || msg.to)?.toString();
+              if (
+                msgToStr === currentUserId &&
+                !msg.seen &&
+                msg.status !== "seen"
+              ) {
+                msg.seen = true;
+                msg.status = "seen";
+                msg.seen_at = new Date();
+                hasUnseen = true;
+              }
+            });
+
+            if (hasUnseen) {
+              await chat.save({ validateModifiedOnly: true });
+
+              chat.participants.forEach((pId) => {
+                const pStr = (pId?._id || pId)?.toString();
+                if (pStr !== currentUserId) {
+                  io.to(pStr).emit("messages_seen", {
+                    conversation_id: chat._id,
+                    reader_id: currentUserId,
+                  });
+                }
+              });
+
+              // Echo to reader's room so any other open devices/tabs clear unread badge
+              io.to(currentUserId).emit("messages_seen", {
+                conversation_id: chat._id,
+                reader_id: currentUserId,
+              });
+            }
+          } catch (err) {
+            console.error("mark_messages_seen error:", err);
+          }
+        });
+
         // handle text and link message
         socket.on("text_message", async (data) => {
           try {
@@ -497,8 +622,10 @@ async function startServer() {
               return;
             }
 
-            const to_user = await User.findById(to).select("socket_id");
+            const to_user = await User.findById(to).select("socket_id status");
             const from_user = await User.findById(from).select("socket_id");
+
+            const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
             const new_message = {
               to,
@@ -506,6 +633,8 @@ async function startServer() {
               type: type || (reply ? "Reply" : "Text"),
               text: message,
               reply: reply || "",
+              status: isRecipientOnline ? "delivered" : "sent",
+              seen: false,
               created_at: Date.now(),
             };
 
@@ -597,8 +726,10 @@ async function startServer() {
               return;
             }
 
-            const to_user = await User.findById(to).select("socket_id");
+            const to_user = await User.findById(to).select("socket_id status");
             const from_user = await User.findById(from).select("socket_id");
+
+            const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
             const new_message = {
               to,
@@ -606,6 +737,8 @@ async function startServer() {
               type: type || "Media",
               text: text || "",
               file: url || (typeof file === "string" ? file : file?.name || ""),
+              status: isRecipientOnline ? "delivered" : "sent",
+              seen: false,
               created_at: Date.now(),
             };
 

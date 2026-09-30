@@ -17,6 +17,7 @@ exports.updateMe = async (req, res, next) => {
       "lastName",
       "about",
       "avatar",
+      "links",
     );
 
     const updated_user = await User.findByIdAndUpdate(user._id, filteredBody, {
