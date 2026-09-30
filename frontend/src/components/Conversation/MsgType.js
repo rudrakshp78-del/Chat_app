@@ -14,6 +14,8 @@ import { useDispatch, useSelector } from "react-redux";
 import {
   ArrowBendUpLeft,
   ArrowBendUpRight,
+  Check,
+  Checks,
   DotsThreeVertical,
   DownloadSimple,
   Image,
@@ -24,6 +26,7 @@ import {
   WarningOctagon,
 } from "phosphor-react";
 
+import { fMessageTime } from "../../utils/formatTime";
 import { socket } from "../../socket";
 import { showSnackbar } from "../../redux/slices/app";
 import {
@@ -348,6 +351,72 @@ const MessageBubble = ({ el, children }) => {
         )}
 
         {children}
+
+        {/* WhatsApp-style Time & Blue Double Checkmarks */}
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="flex-end"
+          spacing={0.5}
+          sx={{
+            mt: 0.35,
+            ml: "auto",
+            width: "fit-content",
+            userSelect: "none",
+          }}
+        >
+          <Typography
+            variant="caption"
+            sx={{
+              fontSize: "0.68rem",
+              fontWeight: 500,
+              color: el.incoming
+                ? theme.palette.text.secondary
+                : "rgba(255, 255, 255, 0.78)",
+              lineHeight: 1,
+            }}
+          >
+            {fMessageTime(el.created_at || el.time)}
+          </Typography>
+          {(!el.incoming || el.outgoing) && !el.deleted && (
+            <>
+              {el.status === "seen" || el.seen ? (
+                <Checks
+                  size={15}
+                  weight="bold"
+                  title="Seen"
+                  style={{
+                    color: "#53bdeb",
+                    display: "inline-block",
+                    verticalAlign: "middle",
+                  }}
+                />
+              ) : el.status === "delivered" ? (
+                <Checks
+                  size={15}
+                  weight="bold"
+                  title="Delivered"
+                  style={{
+                    color: "rgba(255, 255, 255, 0.72)",
+                    display: "inline-block",
+                    verticalAlign: "middle",
+                  }}
+                />
+              ) : (
+                <Check
+                  size={15}
+                  weight="bold"
+                  title="Sent"
+                  style={{
+                    color: "rgba(255, 255, 255, 0.72)",
+                    display: "inline-block",
+                    verticalAlign: "middle",
+                  }}
+                />
+              )}
+            </>
+          )}
+        </Stack>
 
         {/* Three dots options */}
         <Box
@@ -698,24 +767,39 @@ const Timeline = ({ el }) => {
     <Stack
       direction="row"
       alignItems="center"
-      spacing={2}
+      justifyContent="center"
       sx={{
         width: "100%",
+        my: 1.5,
+        userSelect: "none",
       }}
     >
-      <Divider sx={{ flex: 1 }} />
-
-      <Typography
-        variant="caption"
+      <Box
         sx={{
-          color: theme.palette.text.secondary,
-          whiteSpace: "nowrap",
+          bgcolor:
+            theme.palette.mode === "light"
+              ? "#ffffff"
+              : alpha(theme.palette.background.paper, 0.95),
+          color:
+            theme.palette.mode === "light"
+              ? "#54656f"
+              : "rgba(255, 255, 255, 0.85)",
+          boxShadow:
+            theme.palette.mode === "light"
+              ? "0 1px 2px rgba(11, 20, 26, 0.12)"
+              : "0 1px 3px rgba(0, 0, 0, 0.4)",
+          borderRadius: "8px",
+          px: 1.5,
+          py: 0.4,
+          fontSize: "0.72rem",
+          fontWeight: 600,
+          letterSpacing: "0.3px",
+          textTransform: "uppercase",
+          border: `1px solid ${theme.palette.divider}`,
         }}
       >
         {el.text}
-      </Typography>
-
-      <Divider sx={{ flex: 1 }} />
+      </Box>
     </Stack>
   );
 };

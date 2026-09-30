@@ -11,6 +11,7 @@ import { useTheme, styled } from "@mui/material/styles";
 import StyledBadge from "./StyledBadge";
 import { socket } from "../socket";
 import { Chat } from "phosphor-react";
+import getAvatarUrl from "../utils/getAvatarUrl";
 
 const user_id = window.localStorage.getItem("user_id");
 
@@ -79,10 +80,10 @@ const UserComponent = ({
               }}
               variant="dot"
             >
-              <Avatar alt={name} src={img} />
+              <Avatar alt={name} src={getAvatarUrl(img, name)} />
             </StyledBadge>
           ) : (
-            <Avatar alt={name} src={img} />
+            <Avatar alt={name} src={getAvatarUrl(img, name)} />
           )}
 
           <Stack spacing={0.3}>
@@ -153,10 +154,10 @@ const FriendRequestComponent = ({
               }}
               variant="dot"
             >
-              <Avatar alt={name} src={img} />
+              <Avatar alt={name} src={getAvatarUrl(img, name)} />
             </StyledBadge>
           ) : (
-            <Avatar alt={name} src={img} />
+            <Avatar alt={name} src={getAvatarUrl(img, name)} />
           )}
 
           <Stack spacing={0.3}>
@@ -196,7 +197,7 @@ const FriendComponent = ({
   const theme = useTheme();
   const name = `${firstName || ""} ${lastName || ""}`.trim() || "User";
   const isOnline = online || status === "Online";
-  const avatarSrc = img || avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${firstName || "user"}`;
+  const avatarSrc = getAvatarUrl(img || avatar, name);
 
   return (
     <StyledChatBox

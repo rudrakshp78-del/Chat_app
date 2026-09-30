@@ -15,7 +15,7 @@ import {
   UpdateVideoCallDialog,
 } from "../../../redux/slices/videoCall";
 import { socket } from "../../../socket";
-import getAvatarUrl from "../../../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../../../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
@@ -76,9 +76,7 @@ const CallNotification = ({ open, handleClose }) => {
                 src={getAvatarUrl(caller?.avatar, callerName)}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      callerName || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >
@@ -92,9 +90,7 @@ const CallNotification = ({ open, handleClose }) => {
                 src={getAvatarUrl(user?.avatar, user?.firstName)}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      user?.firstName || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >

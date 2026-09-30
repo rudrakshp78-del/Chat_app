@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Box } from "@mui/material";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
@@ -25,6 +25,8 @@ import {
   StarDirectMessage,
   DeleteDirectConversation,
   ClearDirectMessages,
+  MarkMessagesSeen,
+  MarkMessagesDelivered,
 } from "../../redux/slices/Conversation";
 
 import {
@@ -44,6 +46,9 @@ import VideoCallNotification from "../../sections/dashboard/video/CallNotificati
 
 import AudioCallDialog from "../../sections/dashboard/Audio/CallDialog";
 import VideoCallDialog from "../../sections/dashboard/video/CallDialog";
+import { FetchAllStatuses } from "../../redux/slices/status";
+import { showOutsideNotification } from "../../utils/notification";
+import { isConversationMuted } from "../../utils/muteHelpers";
 
 const DashboardLayout = () => {
   const isDesktop = useResponsive("up", "md");
@@ -70,6 +75,21 @@ const DashboardLayout = () => {
   );
 
   const { room_id } = useSelector((state) => state.app);
+
+  const room_id_ref = useRef(room_id);
+  useEffect(() => {
+    room_id_ref.current = room_id;
+  }, [room_id]);
+
+  const current_conversation_ref = useRef(current_conversation);
+  useEffect(() => {
+    current_conversation_ref.current = current_conversation;
+  }, [current_conversation]);
+
+  const conversations_ref = useRef(conversations);
+  useEffect(() => {
+    conversations_ref.current = conversations;
+  }, [conversations]);
 
   // Request notification permissions
   useEffect(() => {
@@ -133,8 +153,8 @@ const DashboardLayout = () => {
       const incoming = !outgoing;
 
       const isCurrentChat =
-        current_conversation?.id?.toString() === data.conversation_id?.toString() ||
-        room_id?.toString() === data.conversation_id?.toString();
+        current_conversation_ref.current?.id?.toString() === data.conversation_id?.toString() ||
+        room_id_ref.current?.toString() === data.conversation_id?.toString();
 
       if (isCurrentChat) {
         dispatch(
@@ -148,12 +168,22 @@ const DashboardLayout = () => {
             starred: !!message.starred,
             reaction: message.reaction || "",
             deleted: !!message.deleted,
+            status: message.status || (message.seen ? "seen" : "sent"),
+            seen: Boolean(message.seen || message.status === "seen"),
             incoming,
             outgoing,
             from: (message.from?._id || message.from)?.toString(),
             to: (message.to?._id || message.to)?.toString(),
+            created_at: message.created_at || message.createdAt || new Date().toISOString(),
           }),
         );
+
+        if (incoming && typeof document !== "undefined" && !document.hidden) {
+          socket.emit("mark_messages_seen", {
+            conversation_id: data.conversation_id,
+            user_id: current_user_id,
+          });
+        }
       }
 
       dispatch(
@@ -166,7 +196,7 @@ const DashboardLayout = () => {
 
       // Trigger notification for incoming message
       if (incoming) {
-        const senderConv = (conversations || []).find(
+        const senderConv = (conversations_ref.current || []).find(
           (c) =>
             c.id?.toString() === data.conversation_id?.toString() ||
             c._id?.toString() === data.conversation_id?.toString()
@@ -175,26 +205,29 @@ const DashboardLayout = () => {
         const contentPreview =
           message.text || (message.file ? "Sent an attachment" : "New message");
 
-        // 1. In-app Snackbar notification
-        dispatch(
-          showSnackbar({
-            severity: "info",
-            message: `${senderName}: ${contentPreview}`,
-          })
-        );
+        const isMuted = isConversationMuted(data.conversation_id);
 
-        // 2. Browser Desktop Notification (when backgrounded or minimized)
-        if (typeof window !== "undefined" && "Notification" in window) {
-          if (Notification.permission === "granted") {
-            try {
-              new Notification(senderName, {
-                body: contentPreview,
-                icon: senderConv?.img || "/favicon.ico",
-              });
-            } catch (err) {
-              console.log("Notification error:", err);
-            }
-          }
+        // 1. In-app Snackbar notification (when outside this specific chat and not muted)
+        if (!isCurrentChat && !isMuted) {
+          dispatch(
+            showSnackbar({
+              severity: "info",
+              message: `${senderName}: ${contentPreview}`,
+            })
+          );
+        }
+
+        // 2. WhatsApp-style Outside / Desktop Notification (when in another chat OR window/tab is in background, and not muted)
+        if ((!isCurrentChat || document.hidden) && !isMuted) {
+          showOutsideNotification({
+            title: senderName,
+            body: contentPreview,
+            icon: senderConv?.img,
+            conversation_id: data.conversation_id,
+            onClick: () => {
+              dispatch(SelectConversation({ room_id: data.conversation_id }));
+            },
+          });
         }
       }
     });
@@ -221,7 +254,7 @@ const DashboardLayout = () => {
     socket.on("chat_deleted", (data) => {
       console.log("CHAT DELETED:", data);
       dispatch(DeleteDirectConversation(data));
-      if (room_id && data.conversation_id && room_id.toString() === data.conversation_id.toString()) {
+      if (room_id_ref.current && data.conversation_id && room_id_ref.current.toString() === data.conversation_id.toString()) {
         dispatch(SelectConversation({ room_id: null }));
       }
     });
@@ -232,11 +265,23 @@ const DashboardLayout = () => {
       dispatch(ClearDirectMessages(data));
     });
 
+    // Messages Seen (WhatsApp blue double ticks)
+    socket.on("messages_seen", (data) => {
+      console.log("MESSAGES SEEN:", data);
+      dispatch(MarkMessagesSeen(data));
+    });
+
+    // Messages Delivered (WhatsApp double grey ticks)
+    socket.on("messages_delivered", (data) => {
+      console.log("MESSAGES DELIVERED:", data);
+      dispatch(MarkMessagesDelivered(data));
+    });
+
     // Start chat
     socket.on("start_chat", (data) => {
       console.log("START CHAT:", data);
 
-      const existing_conversation = conversations.find(
+      const existing_conversation = (conversations_ref.current || []).find(
         (el) => el?.id?.toString() === data._id?.toString(),
       );
 
@@ -303,8 +348,49 @@ const DashboardLayout = () => {
       );
     });
 
+    // Status socket events
+    socket.on("new_status", (data) => {
+      dispatch(FetchAllStatuses());
+      const authorId = (data?.author?._id || data?.author)?.toString();
+      const current_user_id = user_id || window.localStorage.getItem("user_id");
+      if (authorId && authorId !== current_user_id?.toString()) {
+        const authorName = `${data.author?.firstName || "Someone"} ${data.author?.lastName || ""}`.trim();
+        dispatch(
+          showSnackbar({
+            severity: "info",
+            message: `${authorName} posted a new status!`,
+          })
+        );
+      }
+    });
+
+    socket.on("status_deleted", () => {
+      dispatch(FetchAllStatuses());
+    });
+
+    socket.on("status_viewed", (data) => {
+      const current_user_id = user_id || window.localStorage.getItem("user_id");
+      if (data?.authorId?.toString() === current_user_id?.toString()) {
+        dispatch(FetchAllStatuses());
+      }
+    });
+
+    // Listen for service worker notification click navigation
+    const handleServiceWorkerMessage = (event) => {
+      if (event.data?.type === "SELECT_CONVERSATION" && event.data?.conversation_id) {
+        dispatch(SelectConversation({ room_id: event.data.conversation_id }));
+      }
+    };
+
+    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("message", handleServiceWorkerMessage);
+    }
+
     // Cleanup
     return () => {
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage);
+      }
       socket?.off("new_friend_request");
       socket?.off("request_accepted");
       socket?.off("request_sent");
@@ -317,8 +403,13 @@ const DashboardLayout = () => {
       socket?.off("message_starred");
       socket?.off("audio_call_notification");
       socket?.off("video_call_notification");
+      socket?.off("new_status");
+      socket?.off("status_deleted");
+      socket?.off("status_viewed");
+      socket?.off("messages_seen");
+      socket?.off("messages_delivered");
     };
-  }, [isLoggedIn, user_id, dispatch, current_conversation, conversations, room_id]);
+  }, [isLoggedIn, user_id, dispatch]);
 
   // If user is not logged in
   if (!isLoggedIn) {

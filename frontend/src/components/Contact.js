@@ -44,7 +44,7 @@ import { socket } from "../socket";
 import { DeleteDirectConversation } from "../redux/slices/Conversation";
 
 import AntSwitch from "./AntSwitch";
-import getAvatarUrl, { getMockAvatar } from "../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR, getMockAvatar } from "../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transtion(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />
@@ -292,9 +292,7 @@ const Contact = () => {
               alt={current_conversation?.name || "User"}
               imgProps={{
                 onError: (e) => {
-                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                    current_conversation?.name || "User"
-                  )}`;
+                  e.currentTarget.src = DEFAULT_USER_AVATAR;
                 },
               }}
               sx={{

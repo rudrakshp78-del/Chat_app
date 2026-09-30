@@ -18,6 +18,11 @@ import {
   Stack,
   styled,
   Typography,
+  Radio,
+  RadioGroup,
+  FormControl,
+  FormControlLabel,
+  Tooltip,
 } from "@mui/material";
 
 import { useTheme } from "@mui/material/styles";
@@ -29,6 +34,7 @@ import {
   Phone,
   VideoCamera,
   X,
+  BellSlash,
 } from "phosphor-react";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -50,7 +56,12 @@ import {
   DeleteDirectConversation,
   ClearDirectMessages,
 } from "../../redux/slices/Conversation";
-import getAvatarUrl from "../../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../../utils/getAvatarUrl";
+import {
+  isConversationMuted,
+  muteConversation,
+  unmuteConversation,
+} from "../../utils/muteHelpers";
 import {
   Search,
   SearchIconWrapper,
@@ -89,13 +100,6 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   },
 }));
 
-const Conversation_Menu = [
-  { title: "Contact info" },
-  { title: "Mute notifications" },
-  { title: "Clear chat" },
-  { title: "Delete chat" },
-];
-
 const Header = () => {
   const theme = useTheme();
   const isMobile = useResponsive("down", "md");
@@ -107,6 +111,27 @@ const Header = () => {
     (state) => state.conversation.direct_chat
   );
   const { room_id } = useSelector((state) => state.app);
+
+  const activeConvId = room_id || current_conversation?.id || current_conversation?._id;
+  const [isMuted, setIsMuted] = React.useState(() => isConversationMuted(activeConvId));
+  const [openMuteDialog, setOpenMuteDialog] = React.useState(false);
+  const [muteDuration, setMuteDuration] = React.useState("always");
+
+  React.useEffect(() => {
+    setIsMuted(isConversationMuted(activeConvId));
+  }, [activeConvId]);
+
+  React.useEffect(() => {
+    const handleMuteChange = (e) => {
+      if (e.detail?.conversation_id?.toString() === activeConvId?.toString()) {
+        setIsMuted(e.detail.isMuted);
+      }
+    };
+    window.addEventListener("conversation_mute_changed", handleMuteChange);
+    return () => {
+      window.removeEventListener("conversation_mute_changed", handleMuteChange);
+    };
+  }, [activeConvId]);
 
   const [conversationMenuAnchorEl, setConversationMenuAnchorEl] =
     React.useState(null);
@@ -128,16 +153,58 @@ const Header = () => {
     authUserId ||
     (typeof window !== "undefined" ? window.localStorage.getItem("user_id") : null);
 
+  const handleConfirmMute = () => {
+    if (!activeConvId) return;
+    muteConversation(activeConvId, muteDuration);
+    setIsMuted(true);
+    setOpenMuteDialog(false);
+    const label =
+      muteDuration === "8_hours"
+        ? "8 hours"
+        : muteDuration === "1_week"
+        ? "1 week"
+        : "Always";
+    dispatch(
+      showSnackbar({
+        severity: "info",
+        message: `Notifications muted for ${label}`,
+      })
+    );
+  };
+
+  const handleUnmuteChat = () => {
+    if (!activeConvId) return;
+    unmuteConversation(activeConvId);
+    setIsMuted(false);
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: "Notifications unmuted",
+      })
+    );
+  };
+
   const handleMenuItemClick = (title) => {
     handleCloseConversationMenu();
     if (title === "Contact info") {
       handleContactInfo();
+    } else if (title === "Mute notifications") {
+      setOpenMuteDialog(true);
+    } else if (title === "Unmute notifications") {
+      handleUnmuteChat();
     } else if (title === "Clear chat" || title === "Clear messages") {
       setOpenClearChat(true);
     } else if (title === "Delete chat" || title === "Delete message") {
       setOpenDeleteChat(true);
     }
   };
+
+  const conversationMenuItems = [
+    { title: "Contact info" },
+    { title: isMuted ? "Unmute notifications" : "Mute notifications" },
+    { title: "Clear chat" },
+    { title: "Delete chat" },
+  ];
 
   const handleConfirmClearChat = () => {
     const convId = room_id || current_conversation?.id || current_conversation?._id;
@@ -328,9 +395,7 @@ const Header = () => {
               )}
               imgProps={{
                 onError: (e) => {
-                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                    current_conversation?.name || "User"
-                  )}`;
+                  e.currentTarget.src = DEFAULT_USER_AVATAR;
                 },
               }}
               sx={{ width: { xs: 38, sm: 40 }, height: { xs: 38, sm: 40 } }}
@@ -348,9 +413,18 @@ const Header = () => {
               {current_conversation?.name || "Chat"}
             </Typography>
 
-            <Typography variant="caption" noWrap>
-              {current_conversation?.online ? "Online" : "Offline"}
-            </Typography>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <Typography variant="caption" noWrap>
+                {current_conversation?.online ? "Online" : "Offline"}
+              </Typography>
+              {isMuted && (
+                <Tooltip title="Notifications muted">
+                  <Box sx={{ display: "inline-flex", color: "text.secondary" }}>
+                    <BellSlash size={13} weight="bold" />
+                  </Box>
+                </Tooltip>
+              )}
+            </Stack>
           </Stack>
         </Stack>
 
@@ -433,7 +507,7 @@ const Header = () => {
             }}
           >
             <Box p={1}>
-              {Conversation_Menu.map((el) => (
+              {conversationMenuItems.map((el) => (
                 <MenuItem
                   key={el.title}
                   onClick={() => handleMenuItemClick(el.title)}
@@ -450,6 +524,52 @@ const Header = () => {
           </Menu>
         </Stack>
       </Stack>
+
+      {/* Mute Notifications Dialog */}
+      <Dialog
+        open={openMuteDialog}
+        onClose={() => setOpenMuteDialog(false)}
+        maxWidth="xs"
+        fullWidth
+      >
+        <DialogTitle sx={{ pb: 1 }}>
+          Mute notifications for {current_conversation?.name || "this chat"}?
+        </DialogTitle>
+        <DialogContent>
+          <DialogContentText sx={{ mb: 2 }}>
+            Other participants will not see that you muted this chat. You will still
+            receive messages silently without popup banners or sound chimes.
+          </DialogContentText>
+          <FormControl component="fieldset">
+            <RadioGroup
+              value={muteDuration}
+              onChange={(e) => setMuteDuration(e.target.value)}
+            >
+              <FormControlLabel
+                value="8_hours"
+                control={<Radio size="small" />}
+                label="8 Hours"
+              />
+              <FormControlLabel
+                value="1_week"
+                control={<Radio size="small" />}
+                label="1 Week"
+              />
+              <FormControlLabel
+                value="always"
+                control={<Radio size="small" />}
+                label="Always"
+              />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, pb: 2 }}>
+          <Button onClick={() => setOpenMuteDialog(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleConfirmMute}>
+            Mute
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Clear Messages Dialog */}
       <Dialog

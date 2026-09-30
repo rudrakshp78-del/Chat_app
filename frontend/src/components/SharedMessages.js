@@ -12,7 +12,6 @@ import { useTheme } from "@mui/material/styles";
 import { CaretLeft } from "phosphor-react";
 import { useDispatch } from "react-redux";
 import { UpdateSidebarType } from "../redux/slices/app";
-import { faker } from "@faker-js/faker";
 import { getMockAvatar } from "../utils/getAvatarUrl";
 import { SHARED_LINKS } from "../data";
 import { SHARED_DOCS } from "../data";
@@ -104,7 +103,7 @@ const SharedMessages = () => {
                       <Grid item xs={4} key={el}>
                         <img
                           src={getMockAvatar(`shared-${el}`)}
-                          alt={faker.name.fullName()}
+                          alt="Shared media"
                           style={{
                             width: "100%",
                             height: "80px",

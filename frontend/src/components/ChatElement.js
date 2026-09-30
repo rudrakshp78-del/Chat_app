@@ -15,16 +15,20 @@ import {
   Typography,
 } from "@mui/material";
 import { styled, useTheme, alpha } from "@mui/material/styles";
-import { useSearchParams } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { Trash } from "phosphor-react";
+import { Check, Checks, Trash, BellSlash } from "phosphor-react";
 import { SelectConversation, showSnackbar } from "../redux/slices/app";
 import {
   SetCurrentConversation,
   DeleteDirectConversation,
 } from "../redux/slices/Conversation";
 import { socket } from "../socket";
-import getAvatarUrl from "../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../utils/getAvatarUrl";
+import {
+  isConversationMuted,
+  muteConversation,
+  unmuteConversation,
+} from "../utils/muteHelpers";
 
 const truncateText = (string, n) => {
   return string?.length > n ? `${string?.slice(0, n)}...` : string;
@@ -65,7 +69,19 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   },
 }));
 
-const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about }) => {
+const ChatElement = ({
+  img,
+  name,
+  msg,
+  time,
+  unread,
+  online,
+  id,
+  user_id,
+  about,
+  last_msg_outgoing,
+  last_msg_status,
+}) => {
   const dispatch = useDispatch();
   const { room_id } = useSelector((state) => state.app);
   const selectedChatId = room_id?.toString();
@@ -75,6 +91,24 @@ const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about 
 
   const [contextMenu, setContextMenu] = React.useState(null);
   const [openDeleteModal, setOpenDeleteModal] = React.useState(false);
+
+  const [isMuted, setIsMuted] = React.useState(() => isConversationMuted(id));
+
+  React.useEffect(() => {
+    setIsMuted(isConversationMuted(id));
+  }, [id]);
+
+  React.useEffect(() => {
+    const handleMuteChange = (e) => {
+      if (e.detail?.conversation_id?.toString() === id?.toString()) {
+        setIsMuted(e.detail.isMuted);
+      }
+    };
+    window.addEventListener("conversation_mute_changed", handleMuteChange);
+    return () => {
+      window.removeEventListener("conversation_mute_changed", handleMuteChange);
+    };
+  }, [id]);
 
   const handleContextMenu = (event) => {
     event.preventDefault();
@@ -175,9 +209,7 @@ const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about 
                   src={getAvatarUrl(img, name)}
                   imgProps={{
                     onError: (e) => {
-                      e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                        name || "User"
-                      )}`;
+                      e.currentTarget.src = DEFAULT_USER_AVATAR;
                     },
                   }}
                 >
@@ -190,29 +222,45 @@ const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about 
                 src={getAvatarUrl(img, name)}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      name || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >
                 {(name || "U")[0]}
               </Avatar>
             )}
-            <Stack spacing={0.3}>
-              <Typography variant="subtitle2">{name}</Typography>
-              <Typography variant="caption">{truncateText(msg, 20)}</Typography>
+            <Stack spacing={0.3} sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" noWrap>{name}</Typography>
+              <Stack direction="row" alignItems="center" spacing={0.4}>
+                {last_msg_outgoing && (
+                  last_msg_status === "seen" ? (
+                    <Checks size={15} weight="bold" style={{ color: "#53bdeb", flexShrink: 0 }} />
+                  ) : last_msg_status === "delivered" ? (
+                    <Checks size={15} weight="bold" style={{ color: "#8696a0", flexShrink: 0 }} />
+                  ) : (
+                    <Check size={15} weight="bold" style={{ color: "#8696a0", flexShrink: 0 }} />
+                  )
+                )}
+                <Typography variant="caption" noWrap sx={{ color: "text.secondary" }}>
+                  {truncateText(msg, 20)}
+                </Typography>
+              </Stack>
             </Stack>
           </Stack>
-          <Stack spacing={2} alignItems={"center"}>
+          <Stack spacing={1} alignItems={"flex-end"}>
             <Typography sx={{ fontWeight: 600 }} variant="caption">
               {time}
             </Typography>
-            <Badge
-              className="unread-count"
-              color="primary"
-              badgeContent={unread}
-            />
+            <Stack direction="row" spacing={0.5} alignItems="center">
+              {isMuted && (
+                <BellSlash size={14} color="#8696a0" weight="bold" />
+              )}
+              <Badge
+                className="unread-count"
+                color="primary"
+                badgeContent={unread}
+              />
+            </Stack>
           </Stack>
         </Stack>
       </StyledChatBox>
@@ -228,6 +276,37 @@ const ChatElement = ({ img, name, msg, time, unread, online, id, user_id, about 
             : undefined
         }
       >
+        <MenuItem
+          onClick={(e) => {
+            e.stopPropagation();
+            handleCloseContextMenu();
+            if (isMuted) {
+              unmuteConversation(id);
+              setIsMuted(false);
+              dispatch(
+                showSnackbar({
+                  severity: "success",
+                  message: "Notifications unmuted",
+                })
+              );
+            } else {
+              muteConversation(id, "always");
+              setIsMuted(true);
+              dispatch(
+                showSnackbar({
+                  severity: "info",
+                  message: "Notifications muted",
+                })
+              );
+            }
+          }}
+          sx={{ display: "flex", gap: 1 }}
+        >
+          <BellSlash size={18} />
+          <Typography variant="body2">
+            {isMuted ? "Unmute notifications" : "Mute notifications"}
+          </Typography>
+        </MenuItem>
         <MenuItem
           onClick={handleDeleteChatClick}
           sx={{ color: "error.main", display: "flex", gap: 1 }}

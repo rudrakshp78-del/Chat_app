@@ -10,6 +10,19 @@ import {
   LinkMsg,
   DocMsg,
 } from "./MsgType";
+import { fMessageDayDivider } from "../../utils/formatTime";
+
+const isDifferentDay = (d1, d2) => {
+  if (!d1 || !d2) return false;
+  const date1 = new Date(d1);
+  const date2 = new Date(d2);
+  if (isNaN(date1.getTime()) || isNaN(date2.getTime())) return false;
+  return (
+    date1.getFullYear() !== date2.getFullYear() ||
+    date1.getMonth() !== date2.getMonth() ||
+    date1.getDate() !== date2.getDate()
+  );
+};
 
 const Message = ({ menu, starredOnly = false }) => {
   const { current_messages, search_query } = useSelector(
@@ -49,31 +62,70 @@ const Message = ({ menu, starredOnly = false }) => {
       <Stack spacing={1.5}>
         {displayedMessages && displayedMessages.length > 0 ? (
           displayedMessages.map((el, index) => {
-            switch (el.type) {
-              case "divider":
-                return <Timeline key={el.id || index} el={el} />;
-
-              case "msg":
-              default:
-                switch (el.subtype?.toLowerCase()) {
-                  case "img":
-                  case "media":
-                    return <MediaMsg key={el.id || index} el={el} menu={menu} />;
-
-                  case "doc":
-                  case "document":
-                    return <DocMsg key={el.id || index} el={el} menu={menu} />;
-
-                  case "link":
-                    return <LinkMsg key={el.id || index} el={el} menu={menu} />;
-
-                  case "reply":
-                    return <ReplyMsg key={el.id || index} el={el} menu={menu} />;
-
-                  default:
-                    return <TextMsg key={el.id || index} el={el} menu={menu} />;
+            let showDayDivider = false;
+            if (el.type !== "divider" && el.created_at) {
+              if (index === 0) {
+                showDayDivider = true;
+              } else {
+                const prevMsg = displayedMessages[index - 1];
+                if (prevMsg?.type !== "divider") {
+                  showDayDivider = isDifferentDay(
+                    el.created_at,
+                    prevMsg?.created_at
+                  );
                 }
+              }
             }
+
+            const renderMsg = () => {
+              switch (el.type) {
+                case "divider":
+                  return <Timeline key={el.id || index} el={el} />;
+
+                case "msg":
+                default:
+                  switch (el.subtype?.toLowerCase()) {
+                    case "img":
+                    case "media":
+                      return (
+                        <MediaMsg key={el.id || index} el={el} menu={menu} />
+                      );
+
+                    case "doc":
+                    case "document":
+                      return (
+                        <DocMsg key={el.id || index} el={el} menu={menu} />
+                      );
+
+                    case "link":
+                      return (
+                        <LinkMsg key={el.id || index} el={el} menu={menu} />
+                      );
+
+                    case "reply":
+                      return (
+                        <ReplyMsg key={el.id || index} el={el} menu={menu} />
+                      );
+
+                    default:
+                      return (
+                        <TextMsg key={el.id || index} el={el} menu={menu} />
+                      );
+                  }
+              }
+            };
+
+            return (
+              <React.Fragment key={el.id || `msg-${index}`}>
+                {showDayDivider && (
+                  <Timeline
+                    key={`day-${el.id || index}`}
+                    el={{ text: fMessageDayDivider(el.created_at) }}
+                  />
+                )}
+                {renderMsg()}
+              </React.Fragment>
+            );
           })
         ) : query ? (
           <Box sx={{ textAlign: "center", py: 4 }}>

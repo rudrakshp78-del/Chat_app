@@ -1,8 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
-import { faker } from "@faker-js/faker";
 import getAvatarUrl from "../../utils/getAvatarUrl";
-
-const user_id = window.localStorage.getItem("user_id");
+import { fChatListTime } from "../../utils/formatTime";
 
 const initialState = {
   direct_chat: {
@@ -27,6 +25,14 @@ const slice = createSlice({
           (elm) => (elm._id || elm)?.toString() !== current_user_id?.toString()
         );
         const lastMsg = el.messages && el.messages.length > 0 ? el.messages[el.messages.length - 1] : null;
+        const lastMsgOutgoing = lastMsg ? (lastMsg.from?._id || lastMsg.from)?.toString() === current_user_id?.toString() : false;
+        const lastMsgStatus = lastMsg ? (lastMsg.status || (lastMsg.seen ? "seen" : "sent")) : null;
+        const unreadCount = (el.messages || []).filter(
+          (m) =>
+            (m.to?._id || m.to)?.toString() === current_user_id?.toString() &&
+            !m.seen &&
+            m.status !== "seen"
+        ).length;
         return {
           id: el._id,
           user_id: (this_user?._id || this_user)?.toString(),
@@ -34,10 +40,13 @@ const slice = createSlice({
           online: this_user?.status === "Online",
           img: getAvatarUrl(this_user?.avatar, this_user?.firstName),
           msg: lastMsg ? lastMsg.text : "No messages yet",
-          time: "9:36",
-          unread: 0,
+          time: lastMsg?.created_at ? fChatListTime(lastMsg.created_at) : "",
+          unread: unreadCount,
+          last_msg_outgoing: lastMsgOutgoing,
+          last_msg_status: lastMsgStatus,
           pinned: false,
           about: this_user?.about,
+          links: this_user?.links || [],
         };
       });
 
@@ -59,6 +68,12 @@ const slice = createSlice({
             const lastMsg = this_conversation.messages && this_conversation.messages.length > 0
               ? this_conversation.messages[this_conversation.messages.length - 1]
               : null;
+            const unreadCount = (this_conversation.messages || []).filter(
+              (m) =>
+                (m.to?._id || m.to)?.toString() === current_user_id?.toString() &&
+                !m.seen &&
+                m.status !== "seen"
+            ).length;
             const updated = {
               id: this_conversation._id,
               user_id: (user?._id || user)?.toString() || el.user_id,
@@ -66,9 +81,11 @@ const slice = createSlice({
               online: user?.status === "Online",
               img: getAvatarUrl(user?.avatar, user?.firstName),
               msg: lastMsg ? lastMsg.text : el.msg,
-              time: "9:36",
-              unread: 0,
+              time: lastMsg?.created_at ? fChatListTime(lastMsg.created_at) : (el.time || fChatListTime(new Date())),
+              unread: unreadCount,
               pinned: false,
+              about: user?.about || el.about,
+              links: user?.links || el.links || [],
             };
             matchedUpdated = updated;
             return updated;
@@ -99,6 +116,13 @@ const slice = createSlice({
         ? this_conversation.messages[this_conversation.messages.length - 1]
         : null;
 
+      const unreadCount = (this_conversation.messages || []).filter(
+        (m) =>
+          (m.to?._id || m.to)?.toString() === current_user_id?.toString() &&
+          !m.seen &&
+          m.status !== "seen"
+      ).length;
+
       const newConv = {
         id: this_conversation._id,
         user_id: (user?._id || user)?.toString(),
@@ -106,9 +130,11 @@ const slice = createSlice({
         online: user?.status === "Online",
         img: getAvatarUrl(user?.avatar, user?.firstName),
         msg: lastMsg ? lastMsg.text : "No messages yet",
-        time: "9:36",
-        unread: 0,
+        time: lastMsg?.created_at ? fChatListTime(lastMsg.created_at) : fChatListTime(new Date()),
+        unread: unreadCount,
         pinned: false,
+        about: user?.about,
+        links: user?.links || [],
       };
 
       if (!exists) {
@@ -122,6 +148,15 @@ const slice = createSlice({
     },
     setCurrentConversation(state, action) {
       state.direct_chat.current_conversation = action.payload;
+      const convId = action.payload?.id || action.payload?._id;
+      if (convId && state.direct_chat.conversations) {
+        const target = state.direct_chat.conversations.find(
+          (c) => c.id?.toString() === convId.toString() || c._id?.toString() === convId.toString()
+        );
+        if (target && target.unread > 0) {
+          target.unread = 0;
+        }
+      }
     },
     fetchCurrentMessages(state, action) {
       const current_user_id = window.localStorage.getItem("user_id");
@@ -140,10 +175,13 @@ const slice = createSlice({
           starred: !!el.starred,
           reaction: el.reaction || "",
           deleted: !!el.deleted,
+          status: el.status || (el.seen ? "seen" : "sent"),
+          seen: Boolean(el.seen || el.status === "seen"),
           incoming,
           outgoing,
           from: fromId,
           to: (el.to?._id || el.to)?.toString(),
+          created_at: el.created_at || el.createdAt || new Date().toISOString(),
         };
       });
       state.direct_chat.current_messages = formatted_messages;
@@ -151,18 +189,67 @@ const slice = createSlice({
     addDirectMessage(state, action) {
       const msg = action.payload.message;
       if (!msg) return;
+      const formattedMsg = {
+        ...msg,
+        status: msg.status || (msg.seen ? "seen" : "sent"),
+        seen: Boolean(msg.seen || msg.status === "seen"),
+        created_at: msg.created_at || msg.createdAt || new Date().toISOString(),
+      };
       const exists = state.direct_chat.current_messages.some(
-        (m) => m.id && msg.id && m.id === msg.id
+        (m) => m.id && formattedMsg.id && m.id === formattedMsg.id
       );
       if (!exists) {
-        state.direct_chat.current_messages.push(msg);
+        state.direct_chat.current_messages.push(formattedMsg);
+      }
+    },
+    markMessagesSeen(state, action) {
+      const { conversation_id } = action.payload || {};
+      state.direct_chat.current_messages.forEach((m) => {
+        if (m.outgoing && (m.status !== "seen" || !m.seen)) {
+          m.status = "seen";
+          m.seen = true;
+        }
+      });
+
+      if (conversation_id && state.direct_chat.conversations) {
+        const target = state.direct_chat.conversations.find(
+          (c) =>
+            c.id?.toString() === conversation_id?.toString() ||
+            c._id?.toString() === conversation_id?.toString()
+        );
+        if (target) {
+          if (target.unread > 0) target.unread = 0;
+          if (target.last_msg_status !== "seen") target.last_msg_status = "seen";
+        }
+      }
+    },
+    markMessagesDelivered(state, action) {
+      const { conversation_id } = action.payload || {};
+      state.direct_chat.current_messages.forEach((m) => {
+        if (m.outgoing && m.status === "sent") {
+          m.status = "delivered";
+        }
+      });
+
+      if (conversation_id && state.direct_chat.conversations) {
+        const target = state.direct_chat.conversations.find(
+          (c) =>
+            c.id?.toString() === conversation_id?.toString() ||
+            c._id?.toString() === conversation_id?.toString()
+        );
+        if (target && target.last_msg_status === "sent") {
+          target.last_msg_status = "delivered";
+        }
       }
     },
     updateConversationOnNewMessage(state, action) {
       const { conversation_id, message, is_current } = action.payload;
       if (!conversation_id || !message) return;
 
+      const current_user_id = window.localStorage.getItem("user_id");
+      const isOutgoing = (message.from?._id || message.from)?.toString() === current_user_id?.toString();
       const previewText = message.text || (message.file ? "Attachment" : "New message");
+      const msgTime = message.created_at || message.createdAt || new Date();
 
       state.direct_chat.conversations = state.direct_chat.conversations.map((c) => {
         if (
@@ -172,8 +259,10 @@ const slice = createSlice({
           return {
             ...c,
             msg: previewText,
-            time: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+            time: fChatListTime(msgTime),
             unread: is_current ? 0 : (c.unread || 0) + 1,
+            last_msg_outgoing: isOutgoing,
+            last_msg_status: message.status || (message.seen ? "seen" : "sent"),
           };
         }
         return c;
@@ -463,6 +552,18 @@ export const ClearDirectMessages = (payload) => {
 export const UpdateConversationOnNewMessage = (payload) => {
   return async (dispatch) => {
     dispatch(slice.actions.updateConversationOnNewMessage(payload));
+  };
+};
+
+export const MarkMessagesSeen = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.markMessagesSeen(payload));
+  };
+};
+
+export const MarkMessagesDelivered = (payload) => {
+  return async (dispatch) => {
+    dispatch(slice.actions.markMessagesDelivered(payload));
   };
 };
 

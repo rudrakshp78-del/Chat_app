@@ -4,18 +4,11 @@ import {
   Typography,
   IconButton,
   Stack,
-  Tabs,
-  Tab,
-  Grid,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
 import { CaretLeft } from "phosphor-react";
 import { useDispatch } from "react-redux";
 import { UpdateSidebarType } from "../redux/slices/app";
-import { faker } from "@faker-js/faker";
-import { SHARED_LINKS } from "../data";
-import { SHARED_DOCS } from "../data";
-import { LinkMsg, DocMsg } from "./Conversation/MsgType";
 import Message from "./Conversation/Message";
 
 const StarredMessages = () => {

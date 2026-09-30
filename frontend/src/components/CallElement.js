@@ -17,7 +17,7 @@ import {
 import { useDispatch } from "react-redux";
 import { StartAudioCall } from "../redux/slices/audioCall";
 import { StartVideoCall } from "../redux/slices/videoCall";
-import getAvatarUrl from "../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../utils/getAvatarUrl";
 
 const StyledChatBox = styled(Box)(({ theme }) => ({
   "&:hover": {
@@ -86,9 +86,7 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
                 src={avatarSrc}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      name || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >
@@ -101,9 +99,7 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
               src={avatarSrc}
               imgProps={{
                 onError: (e) => {
-                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                    name || "User"
-                  )}`;
+                  e.currentTarget.src = DEFAULT_USER_AVATAR;
                 },
               }}
             >
@@ -174,9 +170,7 @@ const CallElement = ({ img, name, id, handleClose }) => {
             src={avatarSrc}
             imgProps={{
               onError: (e) => {
-                e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                  name || "User"
-                )}`;
+                e.currentTarget.src = DEFAULT_USER_AVATAR;
               },
             }}
           >

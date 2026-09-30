@@ -23,21 +23,32 @@ import {
 } from "../../components/Search";
 import ChatElement from "../../components/ChatElement";
 import Friends from "../../sections/dashboard/Friends";
+import StatusAvatar from "../../components/Status/StatusAvatar";
+import NotificationBanner from "../../components/NotificationBanner";
 
 import { socket } from "../../socket";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { FetchDirectConversations } from "../../redux/slices/Conversation";
+import { FetchAllStatuses } from "../../redux/slices/status";
 
 const Chats = () => {
+  const navigate = useNavigate();
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const theme = useTheme();
 
   const dispatch = useDispatch();
 
+  const { user } = useSelector((state) => state.app);
   const { conversations } = useSelector(
     (state) => state.conversation.direct_chat
   );
+  const { myStatuses, otherStatuses } = useSelector((state) => state.status);
+
+  useEffect(() => {
+    dispatch(FetchAllStatuses());
+  }, [dispatch]);
 
   useEffect(() => {
     const user_id = window.localStorage.getItem("user_id");
@@ -128,11 +139,14 @@ const Chats = () => {
                 <Users />
               </IconButton>
 
-              <IconButton>
+              <IconButton onClick={() => navigate("/status")}>
                 <CircleDashed />
               </IconButton>
             </Stack>
           </Stack>
+
+          {/* DESKTOP NOTIFICATION PROMPT (WhatsApp Style) */}
+          <NotificationBanner />
 
           {/* SEARCH */}
           <Stack sx={{ width: "100%" }}>
@@ -151,6 +165,96 @@ const Chats = () => {
               />
             </Search>
           </Stack>
+
+          {/* WHATSAPP STATUS TRAY */}
+          <Box sx={{ width: "100%", pt: 0.5, pb: 0.5 }}>
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={1.75}
+              sx={{
+                overflowX: "auto",
+                pb: 0.5,
+                "&::-webkit-scrollbar": { display: "none" },
+                msOverflowStyle: "none",
+                scrollbarWidth: "none",
+              }}
+            >
+              {/* My Status */}
+              <Stack
+                alignItems="center"
+                spacing={0.5}
+                sx={{
+                  cursor: "pointer",
+                  minWidth: 56,
+                  maxWidth: 60,
+                  flexShrink: 0,
+                }}
+                onClick={() => navigate("/status")}
+              >
+                <StatusAvatar
+                  src={user?.avatar}
+                  name={user?.firstName}
+                  size={44}
+                  count={myStatuses.length}
+                  allViewed={false}
+                  isOwn={true}
+                  showAddIcon={myStatuses.length === 0}
+                />
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{
+                    fontSize: "0.72rem",
+                    fontWeight: 600,
+                    maxWidth: 58,
+                    textAlign: "center",
+                  }}
+                >
+                  My Status
+                </Typography>
+              </Stack>
+
+              {/* Other users with active status */}
+              {otherStatuses.map((group) => {
+                const u = group.user;
+                const name = u?.firstName || "Contact";
+                return (
+                  <Stack
+                    key={u?._id}
+                    alignItems="center"
+                    spacing={0.5}
+                    sx={{
+                      cursor: "pointer",
+                      minWidth: 56,
+                      maxWidth: 60,
+                      flexShrink: 0,
+                    }}
+                    onClick={() => navigate("/status")}
+                  >
+                    <StatusAvatar
+                      src={u?.avatar}
+                      name={name}
+                      size={44}
+                      count={group.statuses.length}
+                      allViewed={group.allViewed}
+                    />
+                    <Typography
+                      variant="caption"
+                      noWrap
+                      sx={{
+                        fontSize: "0.72rem",
+                        maxWidth: 58,
+                        textAlign: "center",
+                      }}
+                    >
+                      {name}
+                    </Typography>
+                  </Stack>
+                );
+              })}
+            </Stack>
+          </Box>
 
           {/* ARCHIVE */}
           <Stack spacing={1}>

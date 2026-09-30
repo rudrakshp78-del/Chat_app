@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   Avatar,
   Box,
@@ -14,17 +14,27 @@ import { Gear } from "phosphor-react";
 import { Nav_Buttons, Profile_Menu } from "../../data";
 import useSettings from "../../hooks/useSettings";
 import AntSwitch from "../../components/AntSwitch";
-import { faker } from "@faker-js/faker";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { LogoutUser } from "../../redux/slices/auth";
-import getAvatarUrl from "../../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../../utils/getAvatarUrl";
 
 const SideBar = () => {
   const dispatch = useDispatch();
   const { user } = useSelector((state) => state.app);
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const [selected, setSelected] = useState(0);
+  const getActiveIndex = () => {
+    const current = location.pathname.toLowerCase();
+    if (current.startsWith("/status")) return 1;
+    if (current.startsWith("/group")) return 2;
+    if (current.startsWith("/call")) return 3;
+    if (current.startsWith("/settings")) return 4;
+    return 0;
+  };
+
+  const selected = getActiveIndex();
 
   const { onToggleMode } = useSettings();
 
@@ -38,16 +48,19 @@ const SideBar = () => {
         return "/app";
 
       case 1:
-        return "/Group";
+        return "/status";
 
       case 2:
-        return "/call";
+        return "/Group";
 
       case 3:
+        return "/call";
+
+      case 4:
         return "/Settings";
 
       default:
-        break;
+        return "/app";
     }
   };
 
@@ -67,8 +80,6 @@ const SideBar = () => {
         break;
     }
   };
-
-  const navigate = useNavigate();
 
   const handleClick = (event) => {
     setAnchorEl(event.currentTarget);
@@ -159,13 +170,10 @@ const SideBar = () => {
                     }}
                   >
                     <IconButton
-                      onClick={() => setSelected(el.index)}
+                      onClick={() => navigate(getPath(el.index))}
                       sx={{
                         width: "max-content",
-                        color:
-                          theme.palette.mode === "light"
-                            ? "#000"
-                            : theme.palette.text.primary,
+                        color: "#ffffff",
                       }}
                     >
                       {el.icon}
@@ -174,10 +182,7 @@ const SideBar = () => {
                 ) : (
                   <IconButton
                     key={el.index}
-                    onClick={() => {
-                      setSelected(el.index);
-                      navigate(getPath(el.index));
-                    }}
+                    onClick={() => navigate(getPath(el.index))}
                     sx={{
                       width: "max-content",
                       color:
@@ -199,7 +204,7 @@ const SideBar = () => {
               />
 
               {/* SETTINGS */}
-              {selected === 3 ? (
+              {selected === 4 ? (
                 <Box
                   p={1}
                   sx={{
@@ -208,10 +213,7 @@ const SideBar = () => {
                   }}
                 >
                   <IconButton
-                    onClick={() => {
-                      setSelected(3);
-                      navigate(getPath(3));
-                    }}
+                    onClick={() => navigate(getPath(4))}
                     sx={{
                       color: "#fff",
                     }}
@@ -221,11 +223,7 @@ const SideBar = () => {
                 </Box>
               ) : (
                 <IconButton
-                  onClick={() => {
-                    setSelected(3);
-                    navigate(getPath(3));
-                  }}
-
+                  onClick={() => navigate(getPath(4))}
                   sx={{
                     color: theme.palette.text.primary,
                   }}
@@ -252,9 +250,7 @@ const SideBar = () => {
               alt="User avatar"
               imgProps={{
                 onError: (e) => {
-                  e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                    user?.firstName || "User"
-                  )}`;
+                  e.currentTarget.src = DEFAULT_USER_AVATAR;
                 },
               }}
               sx={{

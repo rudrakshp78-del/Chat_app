@@ -10,6 +10,10 @@ import { Provider as ReduxProvider } from "react-redux";
 // contexts
 import SettingsProvider from "./contexts/SettingsContext";
 import { store } from "./redux/store";
+import { initServiceWorker } from "./utils/notification";
+
+// Register notification service worker
+initServiceWorker();
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 

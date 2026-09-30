@@ -13,7 +13,6 @@ import { ArrowLeft } from "phosphor-react";
 import useResponsive from "../../hooks/useResponsive";
 import { useDispatch } from "react-redux";
 import { UpdateSidebarType } from "../../redux/slices/app";
-import { faker } from "@faker-js/faker";
 import { getMockAvatar } from "../../utils/getAvatarUrl";
 import { DocMsg, LinkMsg } from "./Conversation";
 import { Shared_docs, Shared_links } from "../../data";
@@ -86,7 +85,7 @@ const Media = () => {
                       <Grid item xs={4} key={el}>
                         <img
                           src={getMockAvatar(`shared-city-${el}`)}
-                          alt={faker.internet.userName()}
+                          alt="Shared media"
                           style={{
                             width: "100%",
                             height: "80px",

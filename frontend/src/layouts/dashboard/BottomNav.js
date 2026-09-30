@@ -2,14 +2,15 @@ import React from "react";
 import { useTheme } from "@mui/material/styles";
 import { Box, IconButton, Stack } from "@mui/material";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChatCircleDots, GearSix, Phone, Users } from "phosphor-react";
+import { ChatCircleDots, CircleDashed, GearSix, Phone, Users } from "phosphor-react";
 import ProfileMenu from "./ProfileMenu";
 
 const NAV_ITEMS = [
   { index: 0, path: "/app", icon: <ChatCircleDots size={24} />, title: "Chats" },
-  { index: 1, path: "/group", icon: <Users size={24} />, title: "Groups" },
-  { index: 2, path: "/call", icon: <Phone size={24} />, title: "Calls" },
-  { index: 3, path: "/Settings", icon: <GearSix size={24} />, title: "Settings" },
+  { index: 1, path: "/status", icon: <CircleDashed size={24} />, title: "Status" },
+  { index: 2, path: "/group", icon: <Users size={24} />, title: "Groups" },
+  { index: 3, path: "/call", icon: <Phone size={24} />, title: "Calls" },
+  { index: 4, path: "/Settings", icon: <GearSix size={24} />, title: "Settings" },
 ];
 
 const BottomNav = () => {

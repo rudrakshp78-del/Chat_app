@@ -266,8 +266,8 @@ export const FetchUserProfile = () => {
 };
 export const UpdateUserProfile = (formValues) => {
   return async (dispatch, getState) => {
-    axios
-      .patch(
+    try {
+      const response = await axios.patch(
         "/user/update-me",
         formValues,
         {
@@ -276,13 +276,24 @@ export const UpdateUserProfile = (formValues) => {
             Authorization: `Bearer ${getState().auth.token}`,
           },
         }
-      )
-      .then((response) => {
-        console.log(response);
-        dispatch(slice.actions.updateUser({ user: response.data.data }));
-      })
-      .catch((err) => {
-        console.log(err);
-      });
+      );
+      dispatch(slice.actions.updateUser({ user: response.data.data }));
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: "Profile updated successfully!",
+        })
+      );
+      return response.data;
+    } catch (err) {
+      console.error("UpdateUserProfile error:", err);
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message: err?.response?.data?.message || "Failed to update profile",
+        })
+      );
+      throw err;
+    }
   };
 };

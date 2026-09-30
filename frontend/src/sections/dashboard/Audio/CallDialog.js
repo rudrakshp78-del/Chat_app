@@ -17,7 +17,7 @@ import axiosInstance from "../../../utils/axios";
 import { socket } from "../../../socket";
 import { ResetAudioCallQueue } from "../../../redux/slices/audioCall";
 import { ZEGO_APP_ID, ZEGO_SERVER } from "../../../config";
-import getAvatarUrl from "../../../utils/getAvatarUrl";
+import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../../../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
@@ -308,9 +308,7 @@ const CallDialog = ({ open, handleClose }) => {
                 src={getAvatarUrl(otherUserAvatar, otherUserName)}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      otherUserName || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >
@@ -329,9 +327,7 @@ const CallDialog = ({ open, handleClose }) => {
                 src={getAvatarUrl(user?.avatar, user?.firstName)}
                 imgProps={{
                   onError: (e) => {
-                    e.currentTarget.src = `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(
-                      user?.firstName || "User"
-                    )}`;
+                    e.currentTarget.src = DEFAULT_USER_AVATAR;
                   },
                 }}
               >

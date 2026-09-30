@@ -1,6 +1,7 @@
-import React, { useEffect } from "react";
-import { Box, Stack } from "@mui/material";
+import React, { useEffect, useRef, useState } from "react";
+import { Box, Stack, useTheme } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
+import { getSavedWallpaper, WHATSAPP_DOODLE_SVG } from "../../utils/wallpaperHelpers";
 
 import Header from "./Header";
 import Message from "./Message";
@@ -14,16 +15,28 @@ import {
 const Conversation = () => {
   const dispatch = useDispatch();
   const { room_id } = useSelector((state) => state.app);
-  const { conversations } = useSelector(
+  const { conversations, current_conversation } = useSelector(
     (state) => state.conversation.direct_chat
   );
   const { user_id } = useSelector((state) => state.auth);
   const current_user_id = user_id || window.localStorage.getItem("user_id");
 
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  const currentConvIdRef = useRef(current_conversation?.id);
+  useEffect(() => {
+    currentConvIdRef.current = current_conversation?.id;
+  }, [current_conversation]);
+
   useEffect(() => {
     if (room_id) {
-      const current = (conversations || []).find((el) => el?.id?.toString() === room_id?.toString());
-      if (current) {
+      const current = (conversationsRef.current || []).find(
+        (el) => el?.id?.toString() === room_id?.toString()
+      );
+      if (current && currentConvIdRef.current?.toString() !== room_id.toString()) {
         dispatch(SetCurrentConversation(current));
       }
 
@@ -31,12 +44,60 @@ const Conversation = () => {
         "get_messages",
         { conversation_id: room_id, user_id: current_user_id },
         (messages) => {
-          console.log("Fetched messages from backend:", messages);
           dispatch(FetchCurrentMessages({ messages: messages || [] }));
         }
       );
+
+      socket.emit("mark_messages_seen", {
+        conversation_id: room_id,
+        user_id: current_user_id,
+      });
     }
-  }, [room_id, dispatch]);
+  }, [room_id, dispatch, current_user_id]);
+  const theme = useTheme();
+  const [wallpaper, setWallpaper] = useState(getSavedWallpaper);
+
+  useEffect(() => {
+    const handleWallpaperChange = (e) => {
+      setWallpaper(e.detail || getSavedWallpaper());
+    };
+    window.addEventListener("chat_wallpaper_changed", handleWallpaperChange);
+    return () => {
+      window.removeEventListener("chat_wallpaper_changed", handleWallpaperChange);
+    };
+  }, []);
+
+  const isDarkMode = theme.palette.mode === "dark";
+
+  const getWallpaperStyle = () => {
+    const baseColor =
+      wallpaper.type === "solid"
+        ? wallpaper.color
+        : isDarkMode
+        ? "#0B141A"
+        : "#EFEAE2";
+
+    if (wallpaper.type === "image" && wallpaper.imageUrl) {
+      return {
+        backgroundImage: `url(${wallpaper.imageUrl})`,
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+      };
+    }
+
+    if (wallpaper.overlayDoodles) {
+      return {
+        backgroundColor: baseColor,
+        backgroundImage: `url("${WHATSAPP_DOODLE_SVG}")`,
+        backgroundRepeat: "repeat",
+      };
+    }
+
+    return {
+      backgroundColor: baseColor,
+    };
+  };
+
   return (
     <Stack
       sx={{
@@ -75,9 +136,24 @@ const Conversation = () => {
           overflowX: "hidden",
 
           scrollbarWidth: "thin",
+          position: "relative",
+          ...getWallpaperStyle(),
         }}
       >
-        <Message menu={true} />
+        {wallpaper.dimming > 0 && (
+          <Box
+            sx={{
+              position: "absolute",
+              inset: 0,
+              bgcolor: `rgba(0, 0, 0, ${wallpaper.dimming / 100})`,
+              pointerEvents: "none",
+              zIndex: 0,
+            }}
+          />
+        )}
+        <Box sx={{ position: "relative", zIndex: 1 }}>
+          <Message menu={true} />
+        </Box>
       </Box>
 
       {/* ================= FOOTER ================= */}

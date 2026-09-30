@@ -18,8 +18,7 @@ import { useTheme } from "@mui/material/styles";
 
 import { CaretDown, MagnifyingGlass, Phone, VideoCamera } from "phosphor-react";
 
-import { faker } from "@faker-js/faker";
-import { getMockAvatar } from "../../utils/getAvatarUrl";
+import { DEFAULT_USER_AVATAR, getMockAvatar } from "../../utils/getAvatarUrl";
 import { useSearchParams } from "react-router-dom";
 import useResponsive from "../../hooks/useResponsive";
 
@@ -136,12 +135,12 @@ const ChatHeader = () => {
               }}
               variant="dot"
             >
-              <Avatar alt={faker.name.fullName()} src={getMockAvatar("chat-header")} />
+              <Avatar alt="User" src={DEFAULT_USER_AVATAR} />
             </StyledBadge>
           </Box>
 
           <Stack spacing={0.2}>
-            <Typography variant="subtitle2">{faker.name.fullName()}</Typography>
+            <Typography variant="subtitle2">User</Typography>
 
             <Typography variant="caption">Online</Typography>
           </Stack>
