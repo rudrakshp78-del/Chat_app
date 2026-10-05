@@ -276,14 +276,20 @@ const Contact = () => {
   const sharedMediaMessages = React.useMemo(() => {
     return (current_messages || []).filter((m) => {
       const sub = (m?.subtype || "").toLowerCase();
-      return (sub === "img" || sub === "media") && (m?.img || m?.fileUrl);
+      return (sub === "img" || sub === "media") && (m?.img || m?.file || m?.fileUrl);
     });
   }, [current_messages]);
 
   const sharedTotalCount = React.useMemo(() => {
     return (current_messages || []).filter((m) => {
       const sub = (m?.subtype || "").toLowerCase();
-      if (sub === "img" || sub === "media" || sub === "doc" || sub === "link") {
+      if (
+        sub === "img" ||
+        sub === "media" ||
+        sub === "doc" ||
+        sub === "document" ||
+        sub === "link"
+      ) {
         return true;
       }
       return typeof m?.message === "string" && /https?:\/\/\S+/i.test(m.message);
@@ -627,7 +633,7 @@ const Contact = () => {
                     sx={{ cursor: "pointer" }}
                   >
                     <img
-                      src={m.img || m.fileUrl}
+                      src={m.img || m.file || m.fileUrl}
                       alt={m.message || `media-${idx}`}
                       style={{
                         width: 48,

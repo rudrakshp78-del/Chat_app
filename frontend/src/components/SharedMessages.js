@@ -35,7 +35,7 @@ const SharedMessages = () => {
   const sharedMedia = React.useMemo(() => {
     return (current_messages || []).filter((m) => {
       const sub = (m?.subtype || "").toLowerCase();
-      return (sub === "img" || sub === "media") && (m?.img || m?.fileUrl);
+      return (sub === "img" || sub === "media") && (m?.img || m?.file || m?.fileUrl);
     });
   }, [current_messages]);
 
@@ -50,7 +50,7 @@ const SharedMessages = () => {
   const sharedDocs = React.useMemo(() => {
     return (current_messages || []).filter((m) => {
       const sub = (m?.subtype || "").toLowerCase();
-      return sub === "doc";
+      return sub === "doc" || sub === "document";
     });
   }, [current_messages]);
 
@@ -140,13 +140,13 @@ const SharedMessages = () => {
                       <Grid item xs={4} key={el.id || index}>
                         <Box
                           component="a"
-                          href={el.img || el.fileUrl}
+                          href={el.img || el.file || el.fileUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           sx={{ display: "block" }}
                         >
                           <img
-                            src={el.img || el.fileUrl}
+                            src={el.img || el.file || el.fileUrl}
                             alt={el.message || "Shared media"}
                             style={{
                               width: "100%",

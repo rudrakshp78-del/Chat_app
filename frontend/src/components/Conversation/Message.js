@@ -87,6 +87,7 @@ const Message = ({ menu, starredOnly = false }) => {
                   switch (el.subtype?.toLowerCase()) {
                     case "img":
                     case "media":
+                    case "sticker":
                       return (
                         <MediaMsg key={el.id || index} el={el} menu={menu} />
                       );

@@ -112,6 +112,7 @@ async function startServer() {
     // ================================
 
     const io = new Server(server, {
+      maxHttpBufferSize: 25 * 1024 * 1024,
       cors: {
         origin: (origin, callback) => {
           callback(null, true);
@@ -615,7 +616,20 @@ async function startServer() {
             console.log("Received text message:", data);
 
             // data: {to, from, message, conversation_id, type, reply} 
-            const { to, from, message, conversation_id, type, reply } = data;
+            let { to, from, message, conversation_id, type, reply } = data;
+            from = (from || socket.user_id || user_id)?.toString();
+
+            let chat = null;
+            if (conversation_id) {
+              chat = await OneToOneMessage.findById(conversation_id);
+            }
+
+            if (!to && chat && Array.isArray(chat.participants) && from) {
+              const other = chat.participants.find(
+                (p) => (p?._id || p)?.toString() !== from
+              );
+              if (other) to = (other?._id || other)?.toString();
+            }
 
             if (!to || !from) {
               console.log("text_message missing 'to' or 'from':", data);
@@ -637,11 +651,6 @@ async function startServer() {
               seen: false,
               created_at: Date.now(),
             };
-
-            let chat = null;
-            if (conversation_id) {
-              chat = await OneToOneMessage.findById(conversation_id);
-            }
 
             if (!chat) {
               chat = await OneToOneMessage.findOne({
@@ -716,10 +725,23 @@ async function startServer() {
 
         socket.on("file_message", async (data) => {
           try {
-            console.log("Received file message:", data);
+            console.log("Received file message:", data?.type, data?.fileName);
 
-            // data: {to, from, text, file, url, conversation_id, type}
-            const { to, from, text, file, url, conversation_id, type } = data;
+            // data: {to, from, text, file, url, fileName, song, conversation_id, type}
+            let { to, from, text, file, url, fileName, song, conversation_id, type } = data;
+            from = (from || socket.user_id || user_id)?.toString();
+
+            let chat = null;
+            if (conversation_id) {
+              chat = await OneToOneMessage.findById(conversation_id);
+            }
+
+            if (!to && chat && Array.isArray(chat.participants) && from) {
+              const other = chat.participants.find(
+                (p) => (p?._id || p)?.toString() !== from
+              );
+              if (other) to = (other?._id || other)?.toString();
+            }
 
             if (!to || !from) {
               console.log("file_message missing 'to' or 'from':", data);
@@ -731,21 +753,23 @@ async function startServer() {
 
             const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
+            const normalizedType =
+              type === "Doc" || type === "Document"
+                ? "Document"
+                : type || "Media";
+
             const new_message = {
               to,
               from,
-              type: type || "Media",
+              type: normalizedType,
               text: text || "",
               file: url || (typeof file === "string" ? file : file?.name || ""),
+              fileName: fileName || (typeof file === "object" ? file?.name : ""),
+              song: song || undefined,
               status: isRecipientOnline ? "delivered" : "sent",
               seen: false,
               created_at: Date.now(),
             };
-
-            let chat = null;
-            if (conversation_id) {
-              chat = await OneToOneMessage.findById(conversation_id);
-            }
 
             if (!chat) {
               chat = await OneToOneMessage.findOne({

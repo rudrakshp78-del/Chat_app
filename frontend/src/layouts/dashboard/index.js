@@ -164,6 +164,8 @@ const DashboardLayout = () => {
             subtype: message.type,
             message: message.text,
             file: message.file,
+            fileName: message.fileName || "",
+            song: message.song || null,
             reply: message.reply || "",
             starred: !!message.starred,
             reaction: message.reaction || "",

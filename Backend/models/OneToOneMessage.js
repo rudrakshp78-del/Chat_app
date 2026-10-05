@@ -19,7 +19,7 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       type: {
         type: String,
-        enum: ["Text", "Media", "Document", "Link", "Reply"],
+        enum: ["Text", "Media", "Document", "Doc", "Link", "Reply", "Sticker"],
       },
       created_at: {
         type: Date,
@@ -30,6 +30,16 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       file: {
         type: String,
+      },
+      fileName: {
+        type: String,
+      },
+      song: {
+        title: { type: String },
+        artist: { type: String },
+        previewUrl: { type: String },
+        coverUrl: { type: String },
+        synthId: { type: String },
       },
       reply: {
         type: String,

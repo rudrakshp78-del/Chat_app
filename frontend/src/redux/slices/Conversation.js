@@ -171,6 +171,8 @@ const slice = createSlice({
           subtype: el.type || "Text",
           message: el.text,
           file: el.file,
+          fileName: el.fileName || "",
+          song: el.song || null,
           reply: el.reply || "",
           starred: !!el.starred,
           reaction: el.reaction || "",

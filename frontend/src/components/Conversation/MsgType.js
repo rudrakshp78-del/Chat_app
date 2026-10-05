@@ -18,7 +18,10 @@ import {
   Checks,
   DotsThreeVertical,
   DownloadSimple,
-  Image,
+  FileText,
+  MusicNotes,
+  Pause,
+  Play,
   Prohibit,
   Smiley,
   Star,
@@ -27,6 +30,7 @@ import {
 } from "phosphor-react";
 
 import { fMessageTime } from "../../utils/formatTime";
+import { playSongPreview, stopAllSongPreviews } from "../../utils/storyMusicPlayer";
 import { socket } from "../../socket";
 import { showSnackbar } from "../../redux/slices/app";
 import {
@@ -764,10 +768,29 @@ const TextMsg = ({ el }) => {
 
 const MediaMsg = ({ el }) => {
   const theme = useTheme();
+  const [isPlaying, setIsPlaying] = React.useState(false);
+
+  React.useEffect(() => {
+    return () => {
+      if (isPlaying) stopAllSongPreviews();
+    };
+  }, [isPlaying]);
 
   if (el?.deleted) {
     return <DeletedMsg el={el} />;
   }
+
+  const handleToggleSong = (e) => {
+    e.stopPropagation();
+    if (!el?.song) return;
+    if (isPlaying) {
+      stopAllSongPreviews();
+      setIsPlaying(false);
+    } else {
+      setIsPlaying(true);
+      playSongPreview(el.song, () => setIsPlaying(false));
+    }
+  };
 
   return (
     <MessageBubble el={el}>
@@ -775,17 +798,81 @@ const MediaMsg = ({ el }) => {
         <Box
           component="img"
           src={el.img || el.file}
-          alt={el.message}
+          alt={el.message || "Shared photo"}
           sx={{
             display: "block",
             width: "100%",
-            maxWidth: 280,
+            maxWidth: 290,
             height: "auto",
-            maxHeight: 200,
-            objectFit: "cover",
+            maxHeight: 320,
+            objectFit: "contain",
             borderRadius: 1.5,
+            bgcolor: "rgba(0,0,0,0.06)",
           }}
         />
+
+        {/* Instagram Story Song Player Bar on Shared Photo */}
+        {el?.song?.title && (
+          <Stack
+            direction="row"
+            alignItems="center"
+            spacing={1}
+            onClick={handleToggleSong}
+            sx={{
+              px: 1.25,
+              py: 0.7,
+              borderRadius: 99,
+              bgcolor: "rgba(18, 18, 24, 0.85)",
+              color: "#fff",
+              cursor: "pointer",
+              transition: "transform 0.15s ease",
+              "&:hover": { transform: "scale(1.02)" },
+            }}
+          >
+            <Box
+              sx={{
+                width: 26,
+                height: 26,
+                borderRadius: "50%",
+                bgcolor: isPlaying ? "#00E676" : "#FF4081",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+              }}
+            >
+              {isPlaying ? (
+                <Pause size={13} weight="fill" color="#fff" />
+              ) : (
+                <Play size={13} weight="fill" color="#fff" />
+              )}
+            </Box>
+            <Box sx={{ minWidth: 0, flex: 1 }}>
+              <Typography
+                variant="caption"
+                noWrap
+                sx={{ display: "block", fontWeight: 700, color: "#fff", lineHeight: 1.15 }}
+              >
+                🎵 {el.song.title}
+              </Typography>
+              {el.song.artist && (
+                <Typography
+                  variant="caption"
+                  noWrap
+                  sx={{
+                    display: "block",
+                    fontSize: "0.66rem",
+                    color: "rgba(255,255,255,0.75)",
+                    lineHeight: 1.1,
+                  }}
+                >
+                  {el.song.artist}
+                </Typography>
+              )}
+            </Box>
+            <MusicNotes size={16} color="#00E676" weight="bold" />
+          </Stack>
+        )}
 
         {el.message && (
           <Typography
@@ -906,6 +993,13 @@ const DocMsg = ({ el }) => {
     return <DeletedMsg el={el} />;
   }
 
+  const displayDocName =
+    el.fileName ||
+    (typeof el.file === "string" && !el.file.startsWith("data:")
+      ? el.file
+      : el.message) ||
+    "Document";
+
   return (
     <MessageBubble el={el}>
       <Stack
@@ -933,9 +1027,10 @@ const DocMsg = ({ el }) => {
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
+              color: theme.palette.primary.main,
             }}
           >
-            <Image size={32} />
+            <FileText size={30} weight="duotone" />
           </Box>
 
           <Typography
@@ -946,10 +1041,11 @@ const DocMsg = ({ el }) => {
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              fontWeight: 600,
               color: theme.palette.text.primary,
             }}
           >
-            {el.file || "Attachment"}
+            {displayDocName}
           </Typography>
 
           {el.file && (
@@ -957,19 +1053,21 @@ const DocMsg = ({ el }) => {
               component="a"
               href={el.file}
               target="_blank"
-              download
+              rel="noopener noreferrer"
+              download={displayDocName}
               size="small"
+              onClick={(e) => e.stopPropagation()}
               sx={{
                 flexShrink: 0,
-                color: theme.palette.text.primary,
+                color: theme.palette.primary.main,
               }}
             >
-              <DownloadSimple size={20} />
+              <DownloadSimple size={20} weight="bold" />
             </IconButton>
           )}
         </Stack>
 
-        {el.message && (
+        {el.message && el.message !== displayDocName && (
           <Typography
             variant="body2"
             sx={{

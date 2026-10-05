@@ -23,6 +23,8 @@ export const WALLPAPER_COLORS = [
 export const WHATSAPP_DOODLE_SVG =
   "data:image/svg+xml,%3Csvg width='120' height='120' viewBox='0 0 120 120' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M15 15h10v10H15zM45 10c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm35 5c0 4-3 7-7 7s-7-3-7-7 3-7 7-7 7 3 7 7zm25 5l4 8h-8zM10 50c0-5.5 4.5-10 10-10s10 4.5 10 10-4.5 10-10 10-10-4.5-10-10zm50-5h12v12H60zM95 45c4 0 7 3 7 7s-3 7-7 7-7-3-7-7 3-7 7-7zM25 85l-6 10h12zM55 85c0-4 3-7 7-7s7 3 7 7-3 7-7 7-7-3-7-7zm40 5h10v10H95z' fill='%23000000' fill-opacity='0.04' fill-rule='evenodd'/%3E%3C/svg%3E";
 
+export const Trackon_DOODLE_SVG = WHATSAPP_DOODLE_SVG;
+
 export const DEFAULT_WALLPAPER = {
   type: "default", // "default" | "solid" | "image"
   color: "#EFEAE2",
