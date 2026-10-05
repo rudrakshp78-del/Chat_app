@@ -14,7 +14,8 @@ const { promisify } = require("util");
 const catchAsync = require("../utils/catchAsync");
 
 // this function will return you jwt token
-const signToken = (userId) => jwt.sign({ userId }, process.env.JWT_SECRET);
+const signToken = (userId) =>
+  jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
 
 // Register New User
 

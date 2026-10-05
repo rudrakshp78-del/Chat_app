@@ -55,6 +55,10 @@ import {
   muteConversation,
   unmuteConversation,
 } from "../utils/muteHelpers";
+import {
+  isPersonBlocked,
+  togglePersonBlocked,
+} from "../utils/chatSettingsHelpers";
 
 const Transition = React.forwardRef(function Transtion(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />
@@ -176,23 +180,11 @@ const Contact = () => {
   const [openMuteDialog, setOpenMuteDialog] = useState(false);
   const [muteDuration, setMuteDuration] = useState("always");
 
-  const [isBlocked, setIsBlocked] = useState(() => {
-    try {
-      const blocked = JSON.parse(localStorage.getItem("trackon_blocked_contacts") || "[]");
-      return Boolean(activeConvId && blocked.includes(String(activeConvId)));
-    } catch {
-      return false;
-    }
-  });
+  const [isBlocked, setIsBlocked] = useState(() => isPersonBlocked(activeConvId));
 
   React.useEffect(() => {
     setIsMuted(isConversationMuted(activeConvId));
-    try {
-      const blocked = JSON.parse(localStorage.getItem("trackon_blocked_contacts") || "[]");
-      setIsBlocked(Boolean(activeConvId && blocked.includes(String(activeConvId))));
-    } catch {
-      setIsBlocked(false);
-    }
+    setIsBlocked(isPersonBlocked(activeConvId));
   }, [activeConvId]);
 
   React.useEffect(() => {
@@ -201,9 +193,14 @@ const Contact = () => {
         setIsMuted(e.detail.isMuted);
       }
     };
+    const handleFriendshipUpdate = () => {
+      setIsBlocked(isPersonBlocked(activeConvId));
+    };
     window.addEventListener("conversation_mute_changed", handleMuteChange);
+    window.addEventListener("friendship_updated", handleFriendshipUpdate);
     return () => {
       window.removeEventListener("conversation_mute_changed", handleMuteChange);
+      window.removeEventListener("friendship_updated", handleFriendshipUpdate);
     };
   }, [activeConvId]);
 
@@ -243,32 +240,20 @@ const Contact = () => {
   };
 
   const handleConfirmBlock = () => {
-    try {
-      const blocked = JSON.parse(localStorage.getItem("trackon_blocked_contacts") || "[]");
-      const key = String(activeConvId || "");
-      let next;
-      if (isBlocked) {
-        next = blocked.filter((id) => id !== key);
-        setIsBlocked(false);
-        dispatch(
-          showSnackbar({
-            severity: "success",
-            message: `${current_conversation?.name || "Contact"} has been unblocked`,
-          })
-        );
-      } else {
-        next = key ? Array.from(new Set([...blocked, key])) : blocked;
-        setIsBlocked(true);
-        dispatch(
-          showSnackbar({
-            severity: "info",
-            message: `${current_conversation?.name || "Contact"} has been blocked`,
-          })
-        );
-      }
-      localStorage.setItem("trackon_blocked_contacts", JSON.stringify(next));
-    } catch (e) {
-      console.error(e);
+    if (activeConvId) {
+      const nowBlocked = togglePersonBlocked(
+        activeConvId,
+        current_conversation?.name || "Contact"
+      );
+      setIsBlocked(nowBlocked);
+      dispatch(
+        showSnackbar({
+          severity: nowBlocked ? "info" : "success",
+          message: nowBlocked
+            ? `${current_conversation?.name || "Contact"} has been blocked`
+            : `${current_conversation?.name || "Contact"} has been unblocked`,
+        })
+      );
     }
     setOpenBlock(false);
   };

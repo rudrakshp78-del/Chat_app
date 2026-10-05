@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogTitle,
@@ -22,53 +22,90 @@ import {
   ListItemSecondaryAction,
   useTheme,
 } from "@mui/material";
-import { Lock, X, Prohibit, Clock } from "phosphor-react";
-import { useDispatch } from "react-redux";
+import { Lock, X, Prohibit, Clock, ShieldCheck } from "phosphor-react";
+import { useDispatch, useSelector } from "react-redux";
 import { showSnackbar } from "../../../redux/slices/app";
-
-const DEFAULT_PRIVACY = {
-  lastSeen: "Everyone",
-  online: "Everyone",
-  profilePhoto: "Everyone",
-  about: "Everyone",
-  readReceipts: true,
-  disappearingTimer: "Off",
-  groups: "Everyone",
-  blockedContacts: [],
-};
+import {
+  getPrivacySettings,
+  savePrivacySettings,
+  getBlockedContactsList,
+  togglePersonBlocked,
+} from "../../../utils/chatSettingsHelpers";
 
 const PrivacyDialog = ({ open, handleClose }) => {
   const theme = useTheme();
   const dispatch = useDispatch();
+  const { conversations = [] } = useSelector(
+    (state) => state.conversation?.direct_chat || {}
+  );
 
-  const [privacy, setPrivacy] = useState(() => {
-    try {
-      const saved = localStorage.getItem("Trackon_privacy_settings");
-      return saved ? { ...DEFAULT_PRIVACY, ...JSON.parse(saved) } : DEFAULT_PRIVACY;
-    } catch {
-      return DEFAULT_PRIVACY;
+  const [privacy, setPrivacy] = useState(() => getPrivacySettings());
+  const [blockedIds, setBlockedIds] = useState(() => getBlockedContactsList());
+
+  useEffect(() => {
+    if (open) {
+      setPrivacy(getPrivacySettings());
+      setBlockedIds(getBlockedContactsList());
     }
-  });
+  }, [open]);
 
   const handleChange = (field, value) => {
-    const updated = { ...privacy, [field]: value };
+    const updated = savePrivacySettings({ [field]: value });
     setPrivacy(updated);
-    localStorage.setItem("Trackon_privacy_settings", JSON.stringify(updated));
   };
 
-  const handleUnblock = (contactName) => {
-    const updatedBlocked = privacy.blockedContacts.filter((c) => c !== contactName);
-    handleChange("blockedContacts", updatedBlocked);
+  // Combine blocked IDs with readable names from conversations
+  const blockedDisplayList = React.useMemo(() => {
+    const items = [];
+    const seen = new Set();
+
+    blockedIds.forEach((id) => {
+      const key = String(id);
+      seen.add(key);
+      const conv = conversations.find((c) => String(c.id) === key);
+      items.push({
+        id: key,
+        name: conv?.name || `Contact (${key.slice(0, 6)})`,
+      });
+    });
+
+    (privacy.blockedContacts || []).forEach((entry) => {
+      const str = String(entry);
+      const match = str.match(/\(([^)]+)\)$/);
+      const extractedId = match ? match[1] : str;
+      if (!seen.has(extractedId)) {
+        seen.add(extractedId);
+        items.push({
+          id: extractedId,
+          name: str,
+        });
+      }
+    });
+
+    return items;
+  }, [blockedIds, privacy.blockedContacts, conversations]);
+
+  const handleUnblock = (item) => {
+    if (blockedIds.includes(String(item.id))) {
+      togglePersonBlocked(item.id, item.name);
+    }
+    const updatedList = (privacy.blockedContacts || []).filter(
+      (c) => c !== item.name && c !== item.id && !String(c).includes(item.id)
+    );
+    const updated = savePrivacySettings({ blockedContacts: updatedList });
+    setPrivacy(updated);
+    setBlockedIds(getBlockedContactsList());
+
     dispatch(
       showSnackbar({
         severity: "info",
-        message: `Unblocked ${contactName}`,
+        message: `Unblocked ${item.name}`,
       })
     );
   };
 
   const handleSave = () => {
-    localStorage.setItem("Trackon_privacy_settings", JSON.stringify(privacy));
+    savePrivacySettings(privacy);
     dispatch(
       showSnackbar({
         severity: "success",
@@ -210,7 +247,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
 
           <Divider />
 
-          {/* Read Receipts */}
+          {/* Messaging Privacy */}
           <Box>
             <Typography
               variant="overline"
@@ -264,22 +301,50 @@ const PrivacyDialog = ({ open, handleClose }) => {
                     </Typography>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
-                    Start new chats with disappearing messages
+                    Default retention mode for chats unless customized per person
                   </Typography>
                 </Stack>
-                <FormControl size="small" sx={{ minWidth: 140 }}>
+                <FormControl size="small" sx={{ minWidth: 155 }}>
                   <Select
-                    value={privacy.disappearingTimer}
+                    value={privacy.disappearingTimer || "Off"}
                     onChange={(e) =>
                       handleChange("disappearingTimer", e.target.value)
                     }
                   >
-                    <MenuItem value="Off">Off</MenuItem>
-                    <MenuItem value="24 Hours">24 Hours</MenuItem>
+                    <MenuItem value="Off">Permanently (Keep)</MenuItem>
+                    <MenuItem value="After Viewing">👁️ After Viewing</MenuItem>
+                    <MenuItem value="24 Hours">🕒 24 Hours</MenuItem>
                     <MenuItem value="7 Days">7 Days</MenuItem>
                     <MenuItem value="90 Days">90 Days</MenuItem>
                   </Select>
                 </FormControl>
+              </Stack>
+
+              <Divider light />
+
+              {/* Screen Security */}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+              >
+                <Stack spacing={0.25} sx={{ pr: 2 }}>
+                  <Stack direction="row" alignItems="center" spacing={1}>
+                    <ShieldCheck size={16} />
+                    <Typography variant="subtitle2">
+                      Screen Privacy Protection
+                    </Typography>
+                  </Stack>
+                  <Typography variant="caption" color="text.secondary">
+                    Hide sensitive message previews in background notifications
+                  </Typography>
+                </Stack>
+                <Switch
+                  checked={privacy.screenSecurity !== false}
+                  onChange={(e) =>
+                    handleChange("screenSecurity", e.target.checked)
+                  }
+                />
               </Stack>
 
               <Divider light />
@@ -321,7 +386,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
             >
               <Stack spacing={0.25}>
                 <Typography variant="subtitle2" fontWeight={600}>
-                  Blocked Contacts ({privacy.blockedContacts?.length || 0})
+                  Blocked Contacts ({blockedDisplayList.length})
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   Blocked contacts cannot call or send messages to you
@@ -330,11 +395,11 @@ const PrivacyDialog = ({ open, handleClose }) => {
               <Prohibit size={22} color="#EF4444" />
             </Stack>
 
-            {privacy.blockedContacts && privacy.blockedContacts.length > 0 ? (
+            {blockedDisplayList.length > 0 ? (
               <List dense sx={{ mt: 1 }}>
-                {privacy.blockedContacts.map((contact, idx) => (
+                {blockedDisplayList.map((item) => (
                   <ListItem
-                    key={idx}
+                    key={item.id}
                     sx={{
                       bgcolor:
                         theme.palette.mode === "light"
@@ -344,12 +409,12 @@ const PrivacyDialog = ({ open, handleClose }) => {
                       mb: 0.5,
                     }}
                   >
-                    <ListItemText primary={contact} />
+                    <ListItemText primary={item.name} />
                     <ListItemSecondaryAction>
                       <Button
                         size="small"
                         color="error"
-                        onClick={() => handleUnblock(contact)}
+                        onClick={() => handleUnblock(item)}
                       >
                         Unblock
                       </Button>
@@ -359,7 +424,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
               </List>
             ) : (
               <Alert severity="info" sx={{ mt: 1, py: 0.5, fontSize: "0.8rem" }}>
-                No blocked contacts. You can block any contact from their chat profile.
+                No blocked contacts. You can block any person by holding 1–2s on their chat and opening Manage Friendship or Contact Info.
               </Alert>
             )}
           </Box>

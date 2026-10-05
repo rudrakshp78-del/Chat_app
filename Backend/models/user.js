@@ -150,5 +150,15 @@ userSchema.methods.createPasswordResetToken = function () {
   return resetToken;
 };
 
+userSchema.methods.toJSON = function () {
+  const obj = this.toObject();
+  delete obj.password;
+  delete obj.otp;
+  delete obj.otp_expiry_time;
+  delete obj.passwordResetToken;
+  delete obj.passwordResetExpires;
+  return obj;
+};
+
 const User = new mongoose.model("User", userSchema);
 module.exports = User;

@@ -19,13 +19,13 @@ import {
   Typography,
 } from "@mui/material";
 import { alpha, useTheme } from "@mui/material/styles";
+import { useDispatch } from "react-redux";
 import {
   BellSlash,
   Clock,
   PencilSimple,
   Prohibit,
   PushPin,
-  Trash,
   User,
   UserMinus,
   WarningOctagon,
@@ -43,6 +43,14 @@ import {
   isPersonBlocked,
   togglePersonBlocked,
 } from "../utils/chatSettingsHelpers";
+import {
+  isConversationMuted,
+  muteConversation,
+  unmuteConversation,
+} from "../utils/muteHelpers";
+import { SelectConversation, showSnackbar } from "../redux/slices/app";
+import { DeleteDirectConversation } from "../redux/slices/Conversation";
+import { socket } from "../socket";
 import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../utils/getAvatarUrl";
 
 export const ChatRetentionDialog = ({
@@ -53,6 +61,7 @@ export const ChatRetentionDialog = ({
   onSaved,
 }) => {
   const theme = useTheme();
+  const dispatch = useDispatch();
   const [selectedMode, setSelectedMode] = useState(() =>
     getChatRetentionMode(conversationId)
   );
@@ -66,8 +75,18 @@ export const ChatRetentionDialog = ({
   const handleSelect = (modeId) => {
     setSelectedMode(modeId);
     setChatRetentionMode(conversationId, modeId);
+    const info = getRetentionInfo(modeId);
     if (onSaved) {
-      onSaved(modeId, getRetentionInfo(modeId));
+      onSaved(modeId, info);
+    } else {
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: `${info.badge} Chat with ${
+            personName || "this person"
+          } set to: ${info.label}`,
+        })
+      );
     }
     onClose();
   };
@@ -159,21 +178,30 @@ export const ManageFriendshipDialog = ({
   conversationId,
   personName,
   personAvatar,
+  personImg,
   personAbout,
   isOnline,
-  isMuted,
+  online,
+  isMuted: propIsMuted,
   onOpenContactInfo,
   onOpenRetention,
+  onOpenRetentionDialog,
   onToggleMute,
   onDeleteChat,
   onNotify,
 }) => {
   const theme = useTheme();
+  const dispatch = useDispatch();
+
+  const resolvedAvatar = personAvatar || personImg;
+  const resolvedOnline = Boolean(isOnline ?? online);
+  const resolvedOpenRetention = onOpenRetention || onOpenRetentionDialog;
 
   const [nickname, setNickname] = useState("");
   const [editingNickname, setEditingNickname] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [blocked, setBlocked] = useState(false);
+  const [muted, setMuted] = useState(false);
   const [retentionMode, setRetentionMode] = useState("permanent");
 
   useEffect(() => {
@@ -182,50 +210,99 @@ export const ManageFriendshipDialog = ({
       setEditingNickname(false);
       setPinned(isFriendPinned(conversationId));
       setBlocked(isPersonBlocked(conversationId));
+      setMuted(
+        propIsMuted !== undefined
+          ? propIsMuted
+          : isConversationMuted(conversationId)
+      );
       setRetentionMode(getChatRetentionMode(conversationId));
     }
-  }, [open, conversationId]);
+  }, [open, conversationId, propIsMuted]);
+
+  const notifyUser = (message, severity = "info") => {
+    if (onNotify) {
+      onNotify(message);
+    } else {
+      dispatch(showSnackbar({ severity, message }));
+    }
+  };
 
   const handleSaveNickname = () => {
     setFriendNickname(conversationId, nickname);
     setEditingNickname(false);
-    if (onNotify) {
-      onNotify(
-        nickname.trim()
-          ? `Nickname updated to "${nickname.trim()}"`
-          : "Nickname cleared"
-      );
-    }
+    notifyUser(
+      nickname.trim()
+        ? `Nickname updated to "${nickname.trim()}"`
+        : "Nickname cleared",
+      "success"
+    );
   };
 
   const handleTogglePin = () => {
     const nowPinned = toggleFriendPinned(conversationId);
     setPinned(nowPinned);
-    if (onNotify) {
-      onNotify(
-        nowPinned
-          ? `${personName || "Friend"} pinned to top of chats 📌`
-          : `${personName || "Friend"} unpinned`
-      );
+    notifyUser(
+      nowPinned
+        ? `${personName || "Friend"} pinned to top of chats 📌`
+        : `${personName || "Friend"} unpinned`,
+      "info"
+    );
+  };
+
+  const handleToggleMuteInternal = () => {
+    if (onToggleMute) {
+      onToggleMute();
+      onClose();
+      return;
+    }
+    if (!conversationId) return;
+    if (muted) {
+      unmuteConversation(conversationId);
+      setMuted(false);
+      notifyUser("Notifications unmuted", "success");
+    } else {
+      muteConversation(conversationId, "always");
+      setMuted(true);
+      notifyUser("Notifications muted", "info");
     }
   };
 
   const handleToggleBlock = () => {
-    const nowBlocked = togglePersonBlocked(conversationId);
+    const nowBlocked = togglePersonBlocked(conversationId, personName);
     setBlocked(nowBlocked);
-    if (onNotify) {
-      onNotify(
-        nowBlocked
-          ? `${personName || "Person"} has been blocked`
-          : `${personName || "Person"} has been unblocked`
-      );
+    notifyUser(
+      nowBlocked
+        ? `${personName || "Person"} has been blocked`
+        : `${personName || "Person"} has been unblocked`,
+      nowBlocked ? "warning" : "success"
+    );
+  };
+
+  const handleRemoveAndDelete = () => {
+    onClose();
+    if (onDeleteChat) {
+      onDeleteChat();
+      return;
     }
+    if (!conversationId) return;
+    const current_user_id = window.localStorage.getItem("user_id");
+    socket.emit("delete_chat", {
+      conversation_id: conversationId,
+      user_id: current_user_id,
+    });
+    dispatch(DeleteDirectConversation({ conversation_id: conversationId }));
+    dispatch(SelectConversation({ room_id: null }));
+    notifyUser(
+      `Removed chat with ${personName || "this person"}`,
+      "success"
+    );
   };
 
   const handleReportPerson = () => {
-    if (onNotify) {
-      onNotify(`Reported ${personName || "this user"} to Trackon safety team`);
-    }
+    notifyUser(
+      `Reported ${personName || "this user"} to Trackon safety team`,
+      "info"
+    );
     onClose();
   };
 
@@ -274,7 +351,7 @@ export const ManageFriendshipDialog = ({
           }}
         >
           <Avatar
-            src={getAvatarUrl(personAvatar, personName)}
+            src={getAvatarUrl(resolvedAvatar, personName)}
             alt={personName || "Friend"}
             imgProps={{
               onError: (e) => {
@@ -292,10 +369,10 @@ export const ManageFriendshipDialog = ({
             </Typography>
             <Typography
               variant="caption"
-              color={isOnline ? "success.main" : "text.secondary"}
+              color={resolvedOnline ? "success.main" : "text.secondary"}
               fontWeight={600}
             >
-              {isOnline ? "● Online" : "Offline"}
+              {resolvedOnline ? "● Online" : "Offline"}
             </Typography>
             {personAbout && (
               <Typography
@@ -342,20 +419,22 @@ export const ManageFriendshipDialog = ({
 
         {/* Friendship & Chat Options List */}
         <List disablePadding>
-          <ListItemButton
-            onClick={() => {
-              onClose();
-              if (onOpenContactInfo) onOpenContactInfo();
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 38 }}>
-              <User size={20} />
-            </ListItemIcon>
-            <ListItemText
-              primary="View Full Profile"
-              secondary="See shared media, links, docs & bio"
-            />
-          </ListItemButton>
+          {onOpenContactInfo && (
+            <ListItemButton
+              onClick={() => {
+                onClose();
+                onOpenContactInfo();
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 38 }}>
+                <User size={20} />
+              </ListItemIcon>
+              <ListItemText
+                primary="View Full Profile"
+                secondary="See shared media, links, docs & bio"
+              />
+            </ListItemButton>
+          )}
 
           <ListItemButton onClick={handleTogglePin}>
             <ListItemIcon sx={{ minWidth: 38 }}>
@@ -378,7 +457,7 @@ export const ManageFriendshipDialog = ({
           <ListItemButton
             onClick={() => {
               onClose();
-              if (onOpenRetention) onOpenRetention();
+              if (resolvedOpenRetention) resolvedOpenRetention();
             }}
           >
             <ListItemIcon sx={{ minWidth: 38 }}>
@@ -390,19 +469,14 @@ export const ManageFriendshipDialog = ({
             />
           </ListItemButton>
 
-          <ListItemButton
-            onClick={() => {
-              onClose();
-              if (onToggleMute) onToggleMute();
-            }}
-          >
+          <ListItemButton onClick={handleToggleMuteInternal}>
             <ListItemIcon sx={{ minWidth: 38 }}>
               <BellSlash size={20} />
             </ListItemIcon>
             <ListItemText
-              primary={isMuted ? "Unmute Notifications" : "Mute Notifications"}
+              primary={muted ? "Unmute Notifications" : "Mute Notifications"}
               secondary={
-                isMuted ? "Notifications are muted" : "Silence message alerts"
+                muted ? "Notifications are muted" : "Silence message alerts"
               }
             />
           </ListItemButton>
@@ -415,16 +489,16 @@ export const ManageFriendshipDialog = ({
             </ListItemIcon>
             <ListItemText
               primary={blocked ? "Unblock Person" : "Block Person"}
+              secondary={
+                blocked
+                  ? "Currently blocked — tap to allow messages & calls"
+                  : "Prevent this person from calling or messaging you"
+              }
               primaryTypographyProps={{ color: "warning.main", fontWeight: 600 }}
             />
           </ListItemButton>
 
-          <ListItemButton
-            onClick={() => {
-              onClose();
-              if (onDeleteChat) onDeleteChat();
-            }}
-          >
+          <ListItemButton onClick={handleRemoveAndDelete}>
             <ListItemIcon sx={{ minWidth: 38, color: "error.main" }}>
               <UserMinus size={20} />
             </ListItemIcon>

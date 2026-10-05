@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { Box, Stack, useTheme } from "@mui/material";
+import { Box, Button, Stack, Typography, useTheme } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { getSavedWallpaper, WHATSAPP_DOODLE_SVG } from "../../utils/wallpaperHelpers";
 
@@ -12,7 +12,13 @@ import {
   SetCurrentConversation,
   ClearDirectMessages,
 } from "../../redux/slices/Conversation";
-import { getChatRetentionMode } from "../../utils/chatSettingsHelpers";
+import { showSnackbar } from "../../redux/slices/app";
+import {
+  getChatRetentionMode,
+  areReadReceiptsEnabled,
+  isPersonBlocked,
+  togglePersonBlocked,
+} from "../../utils/chatSettingsHelpers";
 
 const Conversation = () => {
   const dispatch = useDispatch();
@@ -22,6 +28,22 @@ const Conversation = () => {
   );
   const { user_id } = useSelector((state) => state.auth);
   const current_user_id = user_id || window.localStorage.getItem("user_id");
+
+  const [blocked, setBlocked] = useState(() => isPersonBlocked(room_id));
+
+  useEffect(() => {
+    setBlocked(isPersonBlocked(room_id));
+  }, [room_id]);
+
+  useEffect(() => {
+    const syncBlocked = () => setBlocked(isPersonBlocked(room_id));
+    window.addEventListener("friendship_updated", syncBlocked);
+    window.addEventListener("privacy_settings_changed", syncBlocked);
+    return () => {
+      window.removeEventListener("friendship_updated", syncBlocked);
+      window.removeEventListener("privacy_settings_changed", syncBlocked);
+    };
+  }, [room_id]);
 
   const conversationsRef = useRef(conversations);
   useEffect(() => {
@@ -51,10 +73,12 @@ const Conversation = () => {
         }
       );
 
-      socket.emit("mark_messages_seen", {
-        conversation_id: activeRoomId,
-        user_id: current_user_id,
-      });
+      if (areReadReceiptsEnabled()) {
+        socket.emit("mark_messages_seen", {
+          conversation_id: activeRoomId,
+          user_id: current_user_id,
+        });
+      }
     }
 
     // When leaving the conversation, if mode is "after_viewing", delete viewed chats
@@ -177,7 +201,53 @@ const Conversation = () => {
           flexShrink: 0,
         }}
       >
-        <Footer />
+        {blocked ? (
+          <Box
+            sx={{
+              p: 2,
+              textAlign: "center",
+              bgcolor:
+                theme.palette.mode === "light"
+                  ? "#F8FAFF"
+                  : theme.palette.background.paper,
+              borderTop: `1px solid ${theme.palette.divider}`,
+            }}
+          >
+            <Stack
+              direction="row"
+              spacing={1.5}
+              alignItems="center"
+              justifyContent="center"
+            >
+              <Typography variant="body2" color="text.secondary">
+                🚫 You blocked{" "}
+                <strong>{current_conversation?.name || "this contact"}</strong>.
+              </Typography>
+              <Button
+                size="small"
+                variant="outlined"
+                color="primary"
+                onClick={() => {
+                  togglePersonBlocked(room_id, current_conversation?.name);
+                  setBlocked(false);
+                  dispatch(
+                    showSnackbar({
+                      severity: "success",
+                      message: `Unblocked ${
+                        current_conversation?.name || "contact"
+                      }`,
+                    })
+                  );
+                }}
+                sx={{ textTransform: "none", borderRadius: 99 }}
+              >
+                Tap to Unblock
+              </Button>
+            </Stack>
+          </Box>
+        ) : (
+          <Footer />
+        )}
       </Box>
     </Stack>
   );

@@ -14,6 +14,9 @@ import {
   TextField,
   Chip,
   Paper,
+  FormControl,
+  Select,
+  MenuItem,
   useTheme,
 } from "@mui/material";
 import {
@@ -23,6 +26,7 @@ import {
   Lock,
   X,
   SignOut,
+  CheckCircle,
 } from "phosphor-react";
 import { useDispatch } from "react-redux";
 import { showSnackbar } from "../../../redux/slices/app";
@@ -33,6 +37,25 @@ const DEFAULT_SECURITY = {
   twoStepPin: "",
   appLockTimeout: "15 minutes",
 };
+
+function detectCurrentDeviceLabel() {
+  if (typeof navigator === "undefined") return "Web Browser (Current Device)";
+  const ua = navigator.userAgent || "";
+  let os = "Device";
+  if (/Windows/i.test(ua)) os = "Windows";
+  else if (/Macintosh|Mac OS X/i.test(ua)) os = "macOS";
+  else if (/Android/i.test(ua)) os = "Android";
+  else if (/iPhone|iPad|iPod/i.test(ua)) os = "iOS";
+  else if (/Linux/i.test(ua)) os = "Linux";
+
+  let browser = "Browser";
+  if (/Edg\//i.test(ua)) browser = "Edge";
+  else if (/Chrome\//i.test(ua)) browser = "Chrome";
+  else if (/Firefox\//i.test(ua)) browser = "Firefox";
+  else if (/Safari\//i.test(ua)) browser = "Safari";
+
+  return `${os} • ${browser} (Current Device)`;
+}
 
 const SecurityDialog = ({ open, handleClose }) => {
   const theme = useTheme();
@@ -50,10 +73,25 @@ const SecurityDialog = ({ open, handleClose }) => {
   const [pinInput, setPinInput] = useState("");
   const [showPinSetup, setShowPinSetup] = useState(false);
 
-  const handleToggle = (field) => {
-    const updated = { ...security, [field]: !security[field] };
+  const persistSecurity = (updated) => {
     setSecurity(updated);
     localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
+  };
+
+  const handleToggle = (field) => {
+    const updated = { ...security, [field]: !security[field] };
+    persistSecurity(updated);
+  };
+
+  const handleTimeoutChange = (value) => {
+    const updated = { ...security, appLockTimeout: value };
+    persistSecurity(updated);
+    dispatch(
+      showSnackbar({
+        severity: "info",
+        message: `App lock timeout set to ${value}`,
+      })
+    );
   };
 
   const handleSavePin = () => {
@@ -72,14 +110,13 @@ const SecurityDialog = ({ open, handleClose }) => {
       twoStepEnabled: true,
       twoStepPin: pinInput,
     };
-    setSecurity(updated);
-    localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
+    persistSecurity(updated);
     setShowPinSetup(false);
     setPinInput("");
     dispatch(
       showSnackbar({
         severity: "success",
-        message: "Two-step verification PIN enabled!",
+        message: "Two-step verification PIN saved!",
       })
     );
   };
@@ -90,8 +127,8 @@ const SecurityDialog = ({ open, handleClose }) => {
       twoStepEnabled: false,
       twoStepPin: "",
     };
-    setSecurity(updated);
-    localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
+    persistSecurity(updated);
+    setShowPinSetup(false);
     dispatch(
       showSnackbar({
         severity: "info",
@@ -108,6 +145,8 @@ const SecurityDialog = ({ open, handleClose }) => {
       })
     );
   };
+
+  const deviceLabel = React.useMemo(() => detectCurrentDeviceLabel(), []);
 
   return (
     <Dialog open={open} onClose={handleClose} fullWidth maxWidth="sm">
@@ -174,7 +213,7 @@ const SecurityDialog = ({ open, handleClose }) => {
               >
                 <Lock size={20} weight="bold" />
               </Box>
-              <Stack spacing={0.5}>
+              <Stack spacing={0.75}>
                 <Typography
                   variant="subtitle2"
                   fontWeight={700}
@@ -191,6 +230,22 @@ const SecurityDialog = ({ open, handleClose }) => {
                   peer-to-peer 256-bit encryption. Neither Trackon nor third
                   parties can read or listen to them.
                 </Typography>
+                <Stack direction="row" spacing={1} flexWrap="wrap" sx={{ pt: 0.5 }}>
+                  <Chip
+                    size="small"
+                    icon={<CheckCircle size={14} />}
+                    label="JWT Auth Protected"
+                    color="success"
+                    variant="outlined"
+                  />
+                  <Chip
+                    size="small"
+                    icon={<CheckCircle size={14} />}
+                    label="Bcrypt Password & OTP Hashing"
+                    color="success"
+                    variant="outlined"
+                  />
+                </Stack>
               </Stack>
             </Stack>
           </Paper>
@@ -239,21 +294,30 @@ const SecurityDialog = ({ open, handleClose }) => {
                   />
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
-                  For added security, enable a 6-digit PIN required when
-                  registering your account.
+                  For added security, enable a 6-digit PIN for your account.
                 </Typography>
               </Stack>
 
               {security.twoStepEnabled ? (
-                <Button
-                  size="small"
-                  color="error"
-                  variant="outlined"
-                  onClick={handleDisablePin}
-                  sx={{ textTransform: "none", borderRadius: 1.5 }}
-                >
-                  Turn Off
-                </Button>
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    variant="outlined"
+                    onClick={() => setShowPinSetup(true)}
+                    sx={{ textTransform: "none", borderRadius: 1.5 }}
+                  >
+                    Change PIN
+                  </Button>
+                  <Button
+                    size="small"
+                    color="error"
+                    variant="outlined"
+                    onClick={handleDisablePin}
+                    sx={{ textTransform: "none", borderRadius: 1.5 }}
+                  >
+                    Turn Off
+                  </Button>
+                </Stack>
               ) : (
                 <Button
                   size="small"
@@ -285,17 +349,18 @@ const SecurityDialog = ({ open, handleClose }) => {
                   display="block"
                   mb={1}
                 >
-                  Create a 6-Digit Security PIN:
+                  Enter a 6-Digit Security PIN:
                 </Typography>
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <TextField
                     size="small"
                     type="password"
-                    placeholder="123456"
+                    placeholder="••••••"
                     value={pinInput}
                     onChange={(e) => {
-                      if (e.target.value.length <= 6) {
-                        setPinInput(e.target.value);
+                      const digits = e.target.value.replace(/\D/g, "");
+                      if (digits.length <= 6) {
+                        setPinInput(digits);
                       }
                     }}
                     inputProps={{
@@ -318,6 +383,32 @@ const SecurityDialog = ({ open, handleClose }) => {
                 </Stack>
               </Box>
             )}
+
+            {/* App Lock Timeout */}
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ mt: 2 }}
+            >
+              <Stack spacing={0.25}>
+                <Typography variant="subtitle2">Auto-Lock Timeout</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Inactivity duration before requiring PIN verification
+                </Typography>
+              </Stack>
+              <FormControl size="small" sx={{ minWidth: 140 }}>
+                <Select
+                  value={security.appLockTimeout || "15 minutes"}
+                  onChange={(e) => handleTimeoutChange(e.target.value)}
+                >
+                  <MenuItem value="Immediately">Immediately</MenuItem>
+                  <MenuItem value="1 minute">1 minute</MenuItem>
+                  <MenuItem value="15 minutes">15 minutes</MenuItem>
+                  <MenuItem value="1 hour">1 hour</MenuItem>
+                </Select>
+              </FormControl>
+            </Stack>
           </Box>
 
           <Divider />
@@ -356,11 +447,9 @@ const SecurityDialog = ({ open, handleClose }) => {
                   <DeviceMobile size={22} />
                 </Box>
                 <Stack spacing={0.25}>
-                  <Typography variant="subtitle2">
-                    Windows • Chrome (Current Device)
-                  </Typography>
+                  <Typography variant="subtitle2">{deviceLabel}</Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Active now • Local connection
+                    Active now • Encrypted connection
                   </Typography>
                 </Stack>
               </Stack>

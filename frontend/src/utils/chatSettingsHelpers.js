@@ -1,14 +1,28 @@
-// Helpers for Chat Retention (After Viewing, 24 Hours, Permanently) & Manage Friendship
+// Helpers for Chat Retention (After Viewing, 24 Hours, Permanently), Privacy & Manage Friendship
 
 const RETENTION_STORAGE_KEY = "trackon_chat_retention";
 const NICKNAME_STORAGE_KEY = "trackon_friend_nicknames";
 const PINNED_FRIENDS_KEY = "trackon_pinned_friends";
 const BLOCKED_CONTACTS_KEY = "trackon_blocked_contacts";
+const PRIVACY_STORAGE_KEY = "Trackon_privacy_settings";
+
+export const DEFAULT_PRIVACY_SETTINGS = {
+  lastSeen: "Everyone",
+  online: "Everyone",
+  profilePhoto: "Everyone",
+  about: "Everyone",
+  readReceipts: true,
+  disappearingTimer: "Off",
+  groups: "Everyone",
+  screenSecurity: true,
+  blockedContacts: [],
+};
 
 export const RETENTION_MODES = [
   {
     id: "after_viewing",
     title: "After Viewing",
+    label: "After Viewing",
     subtitle: "Messages disappear automatically once you view and leave the chat",
     shortLabel: "After Viewing",
     badge: "👁️ After Viewing",
@@ -16,6 +30,7 @@ export const RETENTION_MODES = [
   {
     id: "24_hours",
     title: "24 Hours after Viewing",
+    label: "24 Hours after Viewing",
     subtitle: "Messages are kept for 24 hours and then automatically cleared",
     shortLabel: "24 Hours",
     badge: "🕒 24 Hours",
@@ -23,17 +38,56 @@ export const RETENTION_MODES = [
   {
     id: "permanent",
     title: "Permanently (Keep Chats)",
+    label: "Permanently (Keep Chats)",
     subtitle: "Messages are saved permanently in this chat unless deleted",
     shortLabel: "Permanently",
     badge: "♾️ Permanently",
   },
 ];
 
-export function getChatRetentionMode(conversationId) {
-  if (!conversationId) return "permanent";
+export function getPrivacySettings() {
   try {
-    const map = JSON.parse(localStorage.getItem(RETENTION_STORAGE_KEY) || "{}");
-    return map[String(conversationId)] || "permanent";
+    const saved = localStorage.getItem(PRIVACY_STORAGE_KEY);
+    return saved
+      ? { ...DEFAULT_PRIVACY_SETTINGS, ...JSON.parse(saved) }
+      : DEFAULT_PRIVACY_SETTINGS;
+  } catch {
+    return DEFAULT_PRIVACY_SETTINGS;
+  }
+}
+
+export function savePrivacySettings(nextSettings) {
+  try {
+    const merged = { ...getPrivacySettings(), ...nextSettings };
+    localStorage.setItem(PRIVACY_STORAGE_KEY, JSON.stringify(merged));
+    window.dispatchEvent(
+      new CustomEvent("privacy_settings_changed", { detail: merged })
+    );
+    return merged;
+  } catch (e) {
+    console.error(e);
+    return nextSettings;
+  }
+}
+
+export function areReadReceiptsEnabled() {
+  const settings = getPrivacySettings();
+  return settings.readReceipts !== false;
+}
+
+export function getChatRetentionMode(conversationId) {
+  try {
+    if (conversationId) {
+      const map = JSON.parse(localStorage.getItem(RETENTION_STORAGE_KEY) || "{}");
+      if (map[String(conversationId)]) {
+        return map[String(conversationId)];
+      }
+    }
+    // Fall back to global Default Message Timer in Privacy Settings
+    const privacy = getPrivacySettings();
+    if (privacy.disappearingTimer === "After Viewing") return "after_viewing";
+    if (privacy.disappearingTimer === "24 Hours") return "24_hours";
+    return "permanent";
   } catch {
     return "permanent";
   }
@@ -131,21 +185,26 @@ export function toggleFriendPinned(conversationId) {
   }
 }
 
-// Block / Unblock Contact
-export function isPersonBlocked(conversationId) {
-  if (!conversationId) return false;
+// Block / Unblock Contact (synced across Contact.js, ManageFriendshipDialog, and PrivacyDialog)
+export function getBlockedContactsList() {
   try {
-    const list = JSON.parse(localStorage.getItem(BLOCKED_CONTACTS_KEY) || "[]");
-    return list.includes(String(conversationId));
+    const raw = JSON.parse(localStorage.getItem(BLOCKED_CONTACTS_KEY) || "[]");
+    return Array.isArray(raw) ? raw.map(String) : [];
   } catch {
-    return false;
+    return [];
   }
 }
 
-export function togglePersonBlocked(conversationId) {
+export function isPersonBlocked(conversationId) {
+  if (!conversationId) return false;
+  const list = getBlockedContactsList();
+  return list.includes(String(conversationId));
+}
+
+export function togglePersonBlocked(conversationId, personName) {
   if (!conversationId) return false;
   try {
-    const list = JSON.parse(localStorage.getItem(BLOCKED_CONTACTS_KEY) || "[]");
+    const list = getBlockedContactsList();
     const key = String(conversationId);
     let next;
     let nowBlocked;
@@ -157,6 +216,24 @@ export function togglePersonBlocked(conversationId) {
       nowBlocked = true;
     }
     localStorage.setItem(BLOCKED_CONTACTS_KEY, JSON.stringify(next));
+
+    // Also keep Privacy Settings blockedContacts in sync
+    const privacy = getPrivacySettings();
+    const label = personName ? `${personName} (${key})` : key;
+    let nextPrivacyBlocked = Array.isArray(privacy.blockedContacts)
+      ? [...privacy.blockedContacts]
+      : [];
+    if (nowBlocked) {
+      if (!nextPrivacyBlocked.some((c) => c === key || c.includes(key))) {
+        nextPrivacyBlocked.push(label);
+      }
+    } else {
+      nextPrivacyBlocked = nextPrivacyBlocked.filter(
+        (c) => c !== key && !c.includes(`(${key})`) && c !== personName
+      );
+    }
+    savePrivacySettings({ blockedContacts: nextPrivacyBlocked });
+
     window.dispatchEvent(
       new CustomEvent("friendship_updated", {
         detail: { conversation_id: key, blocked: nowBlocked },
@@ -167,3 +244,4 @@ export function togglePersonBlocked(conversationId) {
     return false;
   }
 }
+
