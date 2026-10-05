@@ -45,7 +45,9 @@ import {
    MESSAGE OPTIONS
 ========================= */
 
-const MessageOptions = ({ el }) => {
+const QUICK_REACTIONS = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
+
+const MessageOptions = ({ el, externalAnchorEl, setExternalAnchorEl }) => {
   const dispatch = useDispatch();
   const [anchorEl, setAnchorEl] = React.useState(null);
   const [reactionAnchorEl, setReactionAnchorEl] = React.useState(null);
@@ -55,7 +57,8 @@ const MessageOptions = ({ el }) => {
 
   const { room_id } = useSelector((state) => state.app);
 
-  const open = Boolean(anchorEl);
+  const activeAnchor = anchorEl || externalAnchorEl;
+  const open = Boolean(activeAnchor);
 
   const handleClick = (event) => {
     event.stopPropagation();
@@ -64,15 +67,37 @@ const MessageOptions = ({ el }) => {
 
   const handleClose = () => {
     setAnchorEl(null);
+    if (setExternalAnchorEl) {
+      setExternalAnchorEl(null);
+    }
+  };
+
+  const handleQuickReact = (emoji) => {
+    handleClose();
+    if (!el?.id) return;
+    const newReaction = el.reaction === emoji ? "" : emoji;
+    socket.emit("react_message", {
+      conversation_id: room_id,
+      message_id: el.id,
+      reaction: newReaction,
+    });
+    dispatch(
+      ReactDirectMessage({
+        conversation_id: room_id,
+        message_id: el.id,
+        reaction: newReaction,
+      })
+    );
   };
 
   const handleAction = (action) => {
-    const currentAnchor = anchorEl;
+    const currentAnchor = activeAnchor;
     handleClose();
 
     switch (action) {
       case "reply":
         dispatch(SetReplyingTo(el));
+        window.dispatchEvent(new CustomEvent("focus_chat_input"));
         break;
 
       case "react":
@@ -133,18 +158,49 @@ const MessageOptions = ({ el }) => {
       </IconButton>
 
       <Menu
-        anchorEl={anchorEl}
+        anchorEl={activeAnchor}
         open={open}
         onClose={handleClose}
         PaperProps={{
           sx: {
-            minWidth: 170,
-            boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+            minWidth: 190,
+            borderRadius: 2,
+            boxShadow: "0 6px 20px rgba(0,0,0,0.16)",
           },
         }}
       >
         {!el?.deleted ? (
           <>
+            {/* WhatsApp-style Quick Emoji Reactions on Hold / 3-Dot Menu */}
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-around"
+              sx={{ px: 1, py: 0.75 }}
+            >
+              {QUICK_REACTIONS.map((emoji) => (
+                <IconButton
+                  key={emoji}
+                  size="small"
+                  onClick={() => handleQuickReact(emoji)}
+                  sx={{
+                    fontSize: "1.15rem",
+                    p: 0.5,
+                    bgcolor:
+                      el?.reaction === emoji
+                        ? "action.selected"
+                        : "transparent",
+                    transition: "transform 0.15s ease",
+                    "&:hover": { transform: "scale(1.25)" },
+                  }}
+                >
+                  <span>{emoji}</span>
+                </IconButton>
+              ))}
+            </Stack>
+
+            <Divider sx={{ my: 0.5 }} />
+
             <MenuItem onClick={() => handleAction("reply")} sx={{ gap: 1.5 }}>
               <ArrowBendUpLeft size={18} />
               <Typography variant="body2">Reply</Typography>
@@ -237,10 +293,114 @@ const MessageOptions = ({ el }) => {
    MESSAGE BUBBLE
 ========================= */
 
+const SWIPE_REPLY_THRESHOLD = 44;
+const HOLD_DURATION_MS = 750; // ~1 second hold to open options menu
+
 const MessageBubble = ({ el, children }) => {
   const theme = useTheme();
   const dispatch = useDispatch();
   const { room_id } = useSelector((state) => state.app);
+
+  const bubbleRef = React.useRef(null);
+  const longPressTimerRef = React.useRef(null);
+  const gestureRef = React.useRef({
+    active: false,
+    startX: 0,
+    startY: 0,
+    swiping: false,
+    longPressed: false,
+  });
+
+  const [externalAnchorEl, setExternalAnchorEl] = React.useState(null);
+  const [swipeOffset, setSwipeOffset] = React.useState(0);
+  const [isSwiping, setIsSwiping] = React.useState(false);
+
+  const clearHoldTimer = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  };
+
+  React.useEffect(() => {
+    return () => clearHoldTimer();
+  }, []);
+
+  const startGesture = (clientX, clientY) => {
+    clearHoldTimer();
+    gestureRef.current = {
+      active: true,
+      startX: clientX,
+      startY: clientY,
+      swiping: false,
+      longPressed: false,
+    };
+
+    longPressTimerRef.current = setTimeout(() => {
+      if (gestureRef.current.active && !gestureRef.current.swiping) {
+        gestureRef.current.longPressed = true;
+        gestureRef.current.active = false;
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(30);
+        }
+        setExternalAnchorEl(bubbleRef.current);
+      }
+    }, HOLD_DURATION_MS);
+  };
+
+  const moveGesture = (clientX, clientY) => {
+    if (!gestureRef.current.active) return;
+
+    const dx = clientX - gestureRef.current.startX;
+    const dy = clientY - gestureRef.current.startY;
+
+    // Cancel hold timer if finger/mouse moves significantly
+    if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+      clearHoldTimer();
+    }
+
+    if (el?.deleted) return;
+
+    // Horizontal slide to reply (like WhatsApp)
+    if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy) * 1.15) {
+      // Allow sliding right on any message, or sliding left on outgoing messages
+      if (dx > 0) {
+        gestureRef.current.swiping = true;
+        setIsSwiping(true);
+        const damped = Math.min(72, (dx - 10) * 0.75);
+        setSwipeOffset(damped);
+      } else if (dx < 0 && !el.incoming) {
+        gestureRef.current.swiping = true;
+        setIsSwiping(true);
+        const damped = Math.max(-72, (dx + 10) * 0.75);
+        setSwipeOffset(damped);
+      }
+    }
+  };
+
+  const endGesture = () => {
+    clearHoldTimer();
+    if (gestureRef.current.swiping) {
+      if (Math.abs(swipeOffset) >= SWIPE_REPLY_THRESHOLD && !el?.deleted) {
+        if (typeof navigator !== "undefined" && navigator.vibrate) {
+          navigator.vibrate(25);
+        }
+        dispatch(SetReplyingTo(el));
+        window.dispatchEvent(new CustomEvent("focus_chat_input"));
+      }
+    }
+    gestureRef.current.active = false;
+    gestureRef.current.swiping = false;
+    setIsSwiping(false);
+    setSwipeOffset(0);
+  };
+
+  const handleContextMenu = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    clearHoldTimer();
+    setExternalAnchorEl(bubbleRef.current);
+  };
 
   const handleToggleReaction = () => {
     if (!el?.id || !el?.reaction) return;
@@ -258,17 +418,75 @@ const MessageBubble = ({ el, children }) => {
     );
   };
 
+  const swipeProgress = Math.min(
+    1,
+    Math.abs(swipeOffset) / SWIPE_REPLY_THRESHOLD
+  );
+  const isReadyToReply = Math.abs(swipeOffset) >= SWIPE_REPLY_THRESHOLD;
+
   return (
     <Stack
       direction="row"
       justifyContent={el.incoming ? "flex-start" : "flex-end"}
+      alignItems="center"
       sx={{
         width: "100%",
         position: "relative",
         mb: el.reaction ? 1.5 : 0.5,
+        touchAction: "pan-y",
       }}
     >
+      {/* WhatsApp Slide-to-Reply Indicator Icon */}
+      {swipeOffset !== 0 && !el.deleted && (
+        <Box
+          sx={{
+            position: "absolute",
+            ...(swipeOffset > 0
+              ? { left: el.incoming ? 4 : "auto", right: el.incoming ? "auto" : "calc(75% + 12px)" }
+              : { right: 8 }),
+            zIndex: 2,
+            width: 34,
+            height: 34,
+            borderRadius: "50%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            bgcolor: isReadyToReply
+              ? theme.palette.primary.main
+              : alpha(theme.palette.background.paper, 0.9),
+            color: isReadyToReply ? "#fff" : theme.palette.text.secondary,
+            boxShadow: "0 2px 6px rgba(0,0,0,0.2)",
+            opacity: swipeProgress,
+            transform: `scale(${0.6 + swipeProgress * 0.45})`,
+            transition: "background-color 0.15s ease, color 0.15s ease",
+            pointerEvents: "none",
+          }}
+        >
+          <ArrowBendUpLeft size={18} weight="bold" />
+        </Box>
+      )}
+
       <Box
+        ref={bubbleRef}
+        onContextMenu={handleContextMenu}
+        onTouchStart={(e) => {
+          const touch = e.touches[0];
+          if (touch) startGesture(touch.clientX, touch.clientY);
+        }}
+        onTouchMove={(e) => {
+          const touch = e.touches[0];
+          if (touch) moveGesture(touch.clientX, touch.clientY);
+        }}
+        onTouchEnd={endGesture}
+        onTouchCancel={endGesture}
+        onMouseDown={(e) => {
+          if (e.button === 0) startGesture(e.clientX, e.clientY);
+        }}
+        onMouseMove={(e) => {
+          if (gestureRef.current.active) moveGesture(e.clientX, e.clientY);
+        }}
+        onMouseUp={endGesture}
+        onMouseLeave={endGesture}
         sx={{
           position: "relative",
           width: "fit-content",
@@ -276,6 +494,14 @@ const MessageBubble = ({ el, children }) => {
           flexShrink: 0,
           p: 1.5,
           borderRadius: 1.5,
+          userSelect: "none",
+          WebkitUserSelect: "none",
+          cursor: "grab",
+          transform:
+            swipeOffset !== 0 ? `translateX(${swipeOffset}px)` : "none",
+          transition: isSwiping
+            ? "none"
+            : "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)",
           backgroundColor: el.incoming
             ? theme.palette.background.default
             : theme.palette.primary.main,
@@ -427,7 +653,11 @@ const MessageBubble = ({ el, children }) => {
             zIndex: 10,
           }}
         >
-          <MessageOptions el={el} />
+          <MessageOptions
+            el={el}
+            externalAnchorEl={externalAnchorEl}
+            setExternalAnchorEl={setExternalAnchorEl}
+          />
         </Box>
 
         {/* Reaction badge */}

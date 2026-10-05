@@ -71,9 +71,23 @@ const Actions = [
 
 const ChatInput = ({ openPicker, setOpenPicker, value, setValue, handleSendMessage }) => {
   const [openActions, setOpenActions] = React.useState(false);
+  const inputRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const handleFocus = () => {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 50);
+    };
+    window.addEventListener("focus_chat_input", handleFocus);
+    return () => {
+      window.removeEventListener("focus_chat_input", handleFocus);
+    };
+  }, []);
 
   return (
     <StyledInput
+      inputRef={inputRef}
       fullWidth
       placeholder="Write a message..."
       variant="filled"
