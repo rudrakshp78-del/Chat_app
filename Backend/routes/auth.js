@@ -7,6 +7,7 @@ const {
   resendOTP,
   verifyOTP,
   login,
+  socialLogin,
   protect,
   forgotPassword,
   resetPassword,
@@ -18,6 +19,7 @@ router.post("/resend-otp", resendOTP);
 router.post("/verify-otp", verifyOTP);
 router.post("/verify", verifyOTP);
 router.post("/login", login);
+router.post("/social-login", socialLogin);
 
 
 router.post("/forgot-password", forgotPassword);

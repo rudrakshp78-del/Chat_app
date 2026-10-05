@@ -185,11 +185,160 @@ export function LoginUser(formValues) {
       })
       .catch(function (error) {
         console.log(error);
-        dispatch(showSnackbar({ severity: "error", message: error.message }));
+        dispatch(
+          showSnackbar({
+            severity: "error",
+            message: error.message || "Login failed",
+          }),
+        );
         dispatch(
           slice.actions.updateIsLoading({ isLoading: false, error: true }),
         );
       });
+  };
+}
+
+export function SocialLogin(socialData) {
+  return async (dispatch) => {
+    dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
+
+    const normalizedEmail = (socialData.email || "").trim().toLowerCase();
+    const firstName =
+      (socialData.firstName || "").trim() ||
+      normalizedEmail.split("@")[0] ||
+      "User";
+    const lastName =
+      (socialData.lastName || "").trim() || socialData.provider || "Account";
+    const provider = socialData.provider || "Social";
+    const avatar = socialData.avatar || "";
+
+    const completeSocialLogin = (response) => {
+      const { token, user_id, message } = response.data;
+      dispatch(
+        slice.actions.logIn({
+          isLoggedIn: true,
+          token,
+          user_id,
+        }),
+      );
+      window.localStorage.setItem("user_id", user_id);
+      window.localStorage.setItem("token", token);
+
+      // Save account in local social account chooser for 1-click future sign-ins
+      try {
+        const savedAccounts = JSON.parse(
+          window.localStorage.getItem("tawk_social_accounts") || "[]",
+        );
+        const filtered = savedAccounts.filter(
+          (acc) =>
+            !(
+              acc.email === normalizedEmail &&
+              acc.provider.toLowerCase() === provider.toLowerCase()
+            ),
+        );
+        filtered.unshift({
+          email: normalizedEmail,
+          firstName,
+          lastName,
+          provider,
+          avatar,
+        });
+        window.localStorage.setItem(
+          "tawk_social_accounts",
+          JSON.stringify(filtered.slice(0, 6)),
+        );
+      } catch (e) {
+        // Ignore storage errors
+      }
+
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: message || `Logged in with ${provider} successfully!`,
+        }),
+      );
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false }),
+      );
+    };
+
+    try {
+      // 1) Primary social login endpoint
+      const response = await axios.post(
+        "/auth/social-login",
+        {
+          email: normalizedEmail,
+          firstName,
+          lastName,
+          provider,
+          avatar,
+        },
+        {
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      completeSocialLogin(response);
+      return true;
+    } catch (primaryError) {
+      // 2) Fallback if backend hasn't deployed /auth/social-login yet
+      const socialPassword =
+        socialData.password || `SocialAuth#${normalizedEmail}#Tawk`;
+      try {
+        const loginRes = await axios.post(
+          "/auth/login",
+          {
+            email: normalizedEmail,
+            password: socialPassword,
+          },
+          {
+            headers: { "Content-Type": "application/json" },
+          },
+        );
+        completeSocialLogin(loginRes);
+        return true;
+      } catch (loginErr) {
+        try {
+          // Register the social user then log in immediately
+          await axios
+            .post(
+              "/auth/register",
+              {
+                firstName,
+                lastName,
+                email: normalizedEmail,
+                password: socialPassword,
+              },
+              {
+                headers: { "Content-Type": "application/json" },
+              },
+            )
+            .catch(() => {});
+
+          const retryLoginRes = await axios.post(
+            "/auth/login",
+            {
+              email: normalizedEmail,
+              password: socialPassword,
+            },
+            {
+              headers: { "Content-Type": "application/json" },
+            },
+          );
+          completeSocialLogin(retryLoginRes);
+          return true;
+        } catch (fallbackErr) {
+          const errMsg =
+            fallbackErr?.message ||
+            primaryError?.message ||
+            `Could not sign in with ${provider}. If this email is already registered with a password, please enter your password or sign in via the form.`;
+          dispatch(showSnackbar({ severity: "error", message: errMsg }));
+          dispatch(
+            slice.actions.updateIsLoading({ isLoading: false, error: true }),
+          );
+          return false;
+        }
+      }
+    }
   };
 }
 

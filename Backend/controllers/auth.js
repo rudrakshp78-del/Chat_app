@@ -314,6 +314,55 @@ exports.login = catchAsync(async (req, res, next) => {
   });
 });
 
+// Social Login (Google, GitHub, Twitter)
+exports.socialLogin = catchAsync(async (req, res, next) => {
+  const { email, firstName, lastName, avatar, provider } = req.body;
+
+  if (!email) {
+    return res.status(400).json({
+      status: "error",
+      message: "Email is required for social login",
+    });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  let user = await User.findOne({ email: normalizedEmail });
+
+  if (!user) {
+    const randomPassword = crypto.randomBytes(16).toString("hex");
+    user = await User.create({
+      firstName: firstName || normalizedEmail.split("@")[0] || "User",
+      lastName: lastName || provider || "User",
+      email: normalizedEmail,
+      password: randomPassword,
+      avatar: avatar || "",
+      verified: true,
+    });
+  } else {
+    let updated = false;
+    if (!user.verified) {
+      user.verified = true;
+      updated = true;
+    }
+    if (avatar && !user.avatar) {
+      user.avatar = avatar;
+      updated = true;
+    }
+    if (updated) {
+      await user.save({ validateBeforeSave: false });
+    }
+  }
+
+  const token = signToken(user._id);
+
+  return res.status(200).json({
+    status: "success",
+    message: `Logged in with ${provider || "Social Account"} successfully!`,
+    token,
+    user_id: user._id,
+  });
+});
+
 // Protect
 exports.protect = catchAsync(async (req, res, next) => {
   // 1) Getting token and check if it's there
