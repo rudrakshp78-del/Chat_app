@@ -10,7 +10,9 @@ import { socket } from "../../socket";
 import {
   FetchCurrentMessages,
   SetCurrentConversation,
+  ClearDirectMessages,
 } from "../../redux/slices/Conversation";
+import { getChatRetentionMode } from "../../utils/chatSettingsHelpers";
 
 const Conversation = () => {
   const dispatch = useDispatch();
@@ -32,27 +34,39 @@ const Conversation = () => {
   }, [current_conversation]);
 
   useEffect(() => {
-    if (room_id) {
+    const activeRoomId = room_id;
+    if (activeRoomId) {
       const current = (conversationsRef.current || []).find(
-        (el) => el?.id?.toString() === room_id?.toString()
+        (el) => el?.id?.toString() === activeRoomId?.toString()
       );
-      if (current && currentConvIdRef.current?.toString() !== room_id.toString()) {
+      if (current && currentConvIdRef.current?.toString() !== activeRoomId.toString()) {
         dispatch(SetCurrentConversation(current));
       }
 
       socket.emit(
         "get_messages",
-        { conversation_id: room_id, user_id: current_user_id },
+        { conversation_id: activeRoomId, user_id: current_user_id },
         (messages) => {
           dispatch(FetchCurrentMessages({ messages: messages || [] }));
         }
       );
 
       socket.emit("mark_messages_seen", {
-        conversation_id: room_id,
+        conversation_id: activeRoomId,
         user_id: current_user_id,
       });
     }
+
+    // When leaving the conversation, if mode is "after_viewing", delete viewed chats
+    return () => {
+      if (activeRoomId && getChatRetentionMode(activeRoomId) === "after_viewing") {
+        socket.emit("clear_chat", {
+          conversation_id: activeRoomId,
+          user_id: current_user_id,
+        });
+        dispatch(ClearDirectMessages({ conversation_id: activeRoomId }));
+      }
+    };
   }, [room_id, dispatch, current_user_id]);
   const theme = useTheme();
   const [wallpaper, setWallpaper] = useState(getSavedWallpaper);

@@ -31,11 +31,16 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { FetchDirectConversations } from "../../redux/slices/Conversation";
 import { FetchAllStatuses } from "../../redux/slices/status";
+import {
+  isFriendPinned,
+  getFriendNickname,
+} from "../../utils/chatSettingsHelpers";
 
 const Chats = () => {
   const navigate = useNavigate();
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [, setFriendshipTick] = useState(0);
   const theme = useTheme();
 
   const dispatch = useDispatch();
@@ -65,9 +70,15 @@ const Chats = () => {
         setArchivedIds([]);
       }
     };
+    const syncFriendship = () => {
+      setFriendshipTick((t) => t + 1);
+    };
     window.addEventListener("archived_chats_updated", syncArchived);
-    return () =>
+    window.addEventListener("friendship_updated", syncFriendship);
+    return () => {
       window.removeEventListener("archived_chats_updated", syncArchived);
+      window.removeEventListener("friendship_updated", syncFriendship);
+    };
   }, []);
 
   useEffect(() => {
@@ -340,9 +351,17 @@ const Chats = () => {
                   })
                   .filter((el) => {
                     if (!searchTerm.trim()) return true;
-                    return el?.name
-                      ?.toLowerCase()
-                      .includes(searchTerm.trim().toLowerCase());
+                    const q = searchTerm.trim().toLowerCase();
+                    const nick = getFriendNickname(el.id)?.toLowerCase() || "";
+                    return (
+                      el?.name?.toLowerCase().includes(q) || nick.includes(q)
+                    );
+                  })
+                  .slice()
+                  .sort((a, b) => {
+                    const pinA = isFriendPinned(a.id) ? 1 : 0;
+                    const pinB = isFriendPinned(b.id) ? 1 : 0;
+                    return pinB - pinA;
                   })
                   .map((el) => (
                     <ChatElement key={el.id} {...el} />

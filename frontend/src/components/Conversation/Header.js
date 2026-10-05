@@ -35,6 +35,14 @@ import {
   VideoCamera,
   X,
   BellSlash,
+  Clock,
+  Eye,
+  Handshake,
+  Infinity as InfinityIcon,
+  Check,
+  User,
+  Eraser,
+  Trash,
 } from "phosphor-react";
 
 import { useDispatch, useSelector } from "react-redux";
@@ -62,6 +70,16 @@ import {
   muteConversation,
   unmuteConversation,
 } from "../../utils/muteHelpers";
+import {
+  getChatRetentionMode,
+  setChatRetentionMode,
+  getRetentionInfo,
+  getFriendNickname,
+} from "../../utils/chatSettingsHelpers";
+import {
+  ChatRetentionDialog,
+  ManageFriendshipDialog,
+} from "../PersonSettingsDialogs";
 import {
   Search,
   SearchIconWrapper,
@@ -116,9 +134,23 @@ const Header = () => {
   const [isMuted, setIsMuted] = React.useState(() => isConversationMuted(activeConvId));
   const [openMuteDialog, setOpenMuteDialog] = React.useState(false);
   const [muteDuration, setMuteDuration] = React.useState("always");
+  const [retentionMode, setRetentionModeState] = React.useState(() =>
+    getChatRetentionMode(activeConvId)
+  );
+  const [nickname, setNicknameState] = React.useState(() =>
+    getFriendNickname(activeConvId)
+  );
+  const [openRetentionDialog, setOpenRetentionDialog] = React.useState(false);
+  const [openFriendshipDialog, setOpenFriendshipDialog] = React.useState(false);
+
+  const personHeaderRef = React.useRef(null);
+  const holdTimerRef = React.useRef(null);
+  const longPressedRef = React.useRef(false);
 
   React.useEffect(() => {
     setIsMuted(isConversationMuted(activeConvId));
+    setRetentionModeState(getChatRetentionMode(activeConvId));
+    setNicknameState(getFriendNickname(activeConvId));
   }, [activeConvId]);
 
   React.useEffect(() => {
@@ -127,9 +159,21 @@ const Header = () => {
         setIsMuted(e.detail.isMuted);
       }
     };
+    const handleRetentionChange = (e) => {
+      if (e.detail?.conversation_id?.toString() === activeConvId?.toString()) {
+        setRetentionModeState(e.detail.mode);
+      }
+    };
+    const handleFriendshipUpdate = () => {
+      setNicknameState(getFriendNickname(activeConvId));
+    };
     window.addEventListener("conversation_mute_changed", handleMuteChange);
+    window.addEventListener("chat_retention_changed", handleRetentionChange);
+    window.addEventListener("friendship_updated", handleFriendshipUpdate);
     return () => {
       window.removeEventListener("conversation_mute_changed", handleMuteChange);
+      window.removeEventListener("chat_retention_changed", handleRetentionChange);
+      window.removeEventListener("friendship_updated", handleFriendshipUpdate);
     };
   }, [activeConvId]);
 
@@ -148,10 +192,52 @@ const Header = () => {
     setConversationMenuAnchorEl(null);
   };
 
+  const clearPersonHoldTimer = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  const startPersonHold = () => {
+    clearPersonHoldTimer();
+    longPressedRef.current = false;
+    holdTimerRef.current = setTimeout(() => {
+      longPressedRef.current = true;
+      if (typeof navigator !== "undefined" && navigator.vibrate) {
+        navigator.vibrate(35);
+      }
+      if (personHeaderRef.current) {
+        setConversationMenuAnchorEl(personHeaderRef.current);
+      }
+    }, 800);
+  };
+
+  const endPersonHold = () => {
+    clearPersonHoldTimer();
+  };
+
   const authUserId = useSelector((state) => state.auth?.user_id);
   const current_user_id =
     authUserId ||
     (typeof window !== "undefined" ? window.localStorage.getItem("user_id") : null);
+
+  const displayName = nickname || current_conversation?.name || "Chat";
+  const retentionInfo = getRetentionInfo(retentionMode);
+
+  const handleQuickRetentionSelect = (modeKey) => {
+    handleCloseConversationMenu();
+    if (!activeConvId) return;
+    setChatRetentionMode(activeConvId, modeKey);
+    setRetentionModeState(modeKey);
+    const info = getRetentionInfo(modeKey);
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: `${info.badge} Chat with ${displayName} set to: ${info.label}`,
+      })
+    );
+  };
 
   const handleConfirmMute = () => {
     if (!activeConvId) return;
@@ -183,28 +269,6 @@ const Header = () => {
       })
     );
   };
-
-  const handleMenuItemClick = (title) => {
-    handleCloseConversationMenu();
-    if (title === "Contact info") {
-      handleContactInfo();
-    } else if (title === "Mute notifications") {
-      setOpenMuteDialog(true);
-    } else if (title === "Unmute notifications") {
-      handleUnmuteChat();
-    } else if (title === "Clear chat" || title === "Clear messages") {
-      setOpenClearChat(true);
-    } else if (title === "Delete chat" || title === "Delete message") {
-      setOpenDeleteChat(true);
-    }
-  };
-
-  const conversationMenuItems = [
-    { title: "Contact info" },
-    { title: isMuted ? "Unmute notifications" : "Mute notifications" },
-    { title: "Clear chat" },
-    { title: "Delete chat" },
-  ];
 
   const handleConfirmClearChat = () => {
     const convId = room_id || current_conversation?.id || current_conversation?._id;
@@ -354,8 +418,9 @@ const Header = () => {
           boxSizing: "border-box",
         }}
       >
-        {/* USER & BACK BUTTON */}
+        {/* USER & BACK BUTTON (Long press 1-2s or right-click opens person options) */}
         <Stack
+          ref={personHeaderRef}
           direction="row"
           spacing={isMobile ? 1 : 2}
           alignItems="center"
@@ -364,8 +429,27 @@ const Header = () => {
             flex: 1,
             mr: 1,
             cursor: "pointer",
+            userSelect: "none",
           }}
-          onClick={handleContactInfo}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setConversationMenuAnchorEl(e.currentTarget);
+          }}
+          onTouchStart={startPersonHold}
+          onTouchEnd={endPersonHold}
+          onTouchCancel={endPersonHold}
+          onMouseDown={(e) => {
+            if (e.button === 0) startPersonHold();
+          }}
+          onMouseUp={endPersonHold}
+          onMouseLeave={endPersonHold}
+          onClick={() => {
+            if (longPressedRef.current) {
+              longPressedRef.current = false;
+              return;
+            }
+            handleContactInfo();
+          }}
         >
           {isMobile && (
             <IconButton
@@ -388,10 +472,10 @@ const Header = () => {
             variant={current_conversation?.online ? "dot" : "standard"}
           >
             <Avatar
-              alt={current_conversation?.name || "User"}
+              alt={displayName}
               src={getAvatarUrl(
                 current_conversation?.img,
-                current_conversation?.name
+                displayName
               )}
               imgProps={{
                 onError: (e) => {
@@ -400,7 +484,7 @@ const Header = () => {
               }}
               sx={{ width: { xs: 38, sm: 40 }, height: { xs: 38, sm: 40 } }}
             >
-              {(current_conversation?.name || "U")[0]}
+              {(displayName || "U")[0]}
             </Avatar>
           </StyledBadge>
 
@@ -410,13 +494,25 @@ const Header = () => {
               noWrap
               sx={{ maxWidth: { xs: 110, sm: 220, md: 300 } }}
             >
-              {current_conversation?.name || "Chat"}
+              {displayName}
             </Typography>
 
-            <Stack direction="row" alignItems="center" spacing={0.5}>
+            <Stack direction="row" alignItems="center" spacing={0.75}>
               <Typography variant="caption" noWrap>
                 {current_conversation?.online ? "Online" : "Offline"}
               </Typography>
+              {retentionMode !== "permanent" && (
+                <Typography
+                  variant="caption"
+                  sx={{
+                    color: "primary.main",
+                    fontWeight: 700,
+                    fontSize: 11,
+                  }}
+                >
+                  • {retentionInfo.badge} {retentionInfo.shortLabel}
+                </Typography>
+              )}
               {isMuted && (
                 <Tooltip title="Notifications muted">
                   <Box sx={{ display: "inline-flex", color: "text.secondary" }}>
@@ -505,25 +601,171 @@ const Header = () => {
               vertical: "top",
               horizontal: "right",
             }}
+            PaperProps={{
+              sx: {
+                minWidth: 240,
+                borderRadius: 2.5,
+                py: 0.5,
+              },
+            }}
           >
-            <Box p={1}>
-              {conversationMenuItems.map((el) => (
-                <MenuItem
-                  key={el.title}
-                  onClick={() => handleMenuItemClick(el.title)}
-                  sx={
-                    el.title === "Delete chat"
-                      ? { color: "error.main" }
-                      : undefined
-                  }
-                >
-                  {el.title}
-                </MenuItem>
-              ))}
-            </Box>
+            <Typography
+              variant="caption"
+              sx={{
+                px: 2,
+                pt: 0.5,
+                pb: 0.25,
+                display: "block",
+                color: "text.secondary",
+                fontWeight: 700,
+                textTransform: "uppercase",
+                letterSpacing: 0.5,
+                fontSize: 10,
+              }}
+            >
+              Delete Chats (Timer)
+            </Typography>
+
+            <MenuItem
+              onClick={() => handleQuickRetentionSelect("after_viewing")}
+              sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Eye size={18} />
+                <Typography variant="body2">Chat: After Viewing</Typography>
+              </Stack>
+              {retentionMode === "after_viewing" && (
+                <Check size={16} weight="bold" color={theme.palette.primary.main} />
+              )}
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => handleQuickRetentionSelect("24_hours")}
+              sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <Clock size={18} />
+                <Typography variant="body2">Chat: 24 Hours</Typography>
+              </Stack>
+              {retentionMode === "24_hours" && (
+                <Check size={16} weight="bold" color={theme.palette.primary.main} />
+              )}
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => handleQuickRetentionSelect("permanent")}
+              sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <InfinityIcon size={18} />
+                <Typography variant="body2">Chat: Permanently</Typography>
+              </Stack>
+              {retentionMode === "permanent" && (
+                <Check size={16} weight="bold" color={theme.palette.primary.main} />
+              )}
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                handleCloseConversationMenu();
+                setOpenRetentionDialog(true);
+              }}
+              sx={{ display: "flex", gap: 1.5 }}
+            >
+              <Clock size={18} />
+              <Typography variant="body2" color="primary.main" fontWeight={600}>
+                Delete Chats Settings...
+              </Typography>
+            </MenuItem>
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <MenuItem
+              onClick={() => {
+                handleCloseConversationMenu();
+                setOpenFriendshipDialog(true);
+              }}
+              sx={{ display: "flex", gap: 1.5 }}
+            >
+              <Handshake size={18} />
+              <Typography variant="body2" fontWeight={600}>
+                Manage Friendship
+              </Typography>
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                handleCloseConversationMenu();
+                if (isMuted) {
+                  handleUnmuteChat();
+                } else {
+                  setOpenMuteDialog(true);
+                }
+              }}
+              sx={{ display: "flex", gap: 1.5 }}
+            >
+              <BellSlash size={18} />
+              <Typography variant="body2">
+                {isMuted ? "Unmute notifications" : "Mute notifications"}
+              </Typography>
+            </MenuItem>
+
+            <MenuItem
+              onClick={handleContactInfo}
+              sx={{ display: "flex", gap: 1.5 }}
+            >
+              <User size={18} />
+              <Typography variant="body2">Contact info</Typography>
+            </MenuItem>
+
+            <MenuItem
+              onClick={() => {
+                handleCloseConversationMenu();
+                setOpenClearChat(true);
+              }}
+              sx={{ display: "flex", gap: 1.5 }}
+            >
+              <Eraser size={18} />
+              <Typography variant="body2">Clear chat</Typography>
+            </MenuItem>
+
+            <Divider sx={{ my: 0.5 }} />
+
+            <MenuItem
+              onClick={() => {
+                handleCloseConversationMenu();
+                setOpenDeleteChat(true);
+              }}
+              sx={{ color: "error.main", display: "flex", gap: 1.5 }}
+            >
+              <Trash size={18} />
+              <Typography variant="body2">Delete chat</Typography>
+            </MenuItem>
           </Menu>
         </Stack>
       </Stack>
+
+      {/* Delete Chats / Message Retention Dialog */}
+      <ChatRetentionDialog
+        open={openRetentionDialog}
+        onClose={() => setOpenRetentionDialog(false)}
+        conversationId={activeConvId}
+        personName={displayName}
+      />
+
+      {/* Manage Friendship Dialog */}
+      <ManageFriendshipDialog
+        open={openFriendshipDialog}
+        onClose={() => setOpenFriendshipDialog(false)}
+        conversationId={activeConvId}
+        userId={targetUserId}
+        personName={current_conversation?.name || "Chat"}
+        personImg={current_conversation?.img}
+        personAbout={current_conversation?.about}
+        online={current_conversation?.online}
+        onOpenContactInfo={handleContactInfo}
+        onOpenRetentionDialog={() => setOpenRetentionDialog(true)}
+      />
 
       {/* Mute Notifications Dialog */}
       <Dialog
@@ -533,7 +775,7 @@ const Header = () => {
         fullWidth
       >
         <DialogTitle sx={{ pb: 1 }}>
-          Mute notifications for {current_conversation?.name || "this chat"}?
+          Mute notifications for {displayName || "this chat"}?
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>

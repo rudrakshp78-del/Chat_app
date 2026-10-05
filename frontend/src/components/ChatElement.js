@@ -27,7 +27,12 @@ import {
   BellSlash,
   Check,
   Checks,
+  Clock,
   Eraser,
+  Eye,
+  Handshake,
+  Infinity as InfinityIcon,
+  PushPin,
   Trash,
   User,
 } from "phosphor-react";
@@ -50,6 +55,18 @@ import {
   muteConversation,
   unmuteConversation,
 } from "../utils/muteHelpers";
+import {
+  getChatRetentionMode,
+  setChatRetentionMode,
+  getRetentionInfo,
+  getFriendNickname,
+  isFriendPinned,
+  toggleFriendPinned,
+} from "../utils/chatSettingsHelpers";
+import {
+  ChatRetentionDialog,
+  ManageFriendshipDialog,
+} from "./PersonSettingsDialogs";
 
 const truncateText = (string, n) => {
   return string?.length > n ? `${string?.slice(0, n)}...` : string;
@@ -130,14 +147,26 @@ const ChatElement = ({
   const [openClearModal, setOpenClearModal] = React.useState(false);
   const [openMuteModal, setOpenMuteModal] = React.useState(false);
   const [muteDuration, setMuteDuration] = React.useState("always");
+  const [openRetentionDialog, setOpenRetentionDialog] = React.useState(false);
+  const [openFriendshipDialog, setOpenFriendshipDialog] = React.useState(false);
 
   const [swipeOffset, setSwipeOffset] = React.useState(0);
   const [isSwiping, setIsSwiping] = React.useState(false);
 
   const [isMuted, setIsMuted] = React.useState(() => isConversationMuted(id));
+  const [retentionMode, setRetentionModeState] = React.useState(() =>
+    getChatRetentionMode(id)
+  );
+  const [nickname, setNicknameState] = React.useState(() =>
+    getFriendNickname(id)
+  );
+  const [isPinned, setIsPinnedState] = React.useState(() => isFriendPinned(id));
 
   React.useEffect(() => {
     setIsMuted(isConversationMuted(id));
+    setRetentionModeState(getChatRetentionMode(id));
+    setNicknameState(getFriendNickname(id));
+    setIsPinnedState(isFriendPinned(id));
   }, [id]);
 
   React.useEffect(() => {
@@ -146,9 +175,25 @@ const ChatElement = ({
         setIsMuted(e.detail.isMuted);
       }
     };
+    const handleRetentionChange = (e) => {
+      if (e.detail?.conversation_id?.toString() === id?.toString()) {
+        setRetentionModeState(e.detail.mode);
+      }
+    };
+    const handleFriendshipUpdate = () => {
+      setNicknameState(getFriendNickname(id));
+      setIsPinnedState(isFriendPinned(id));
+    };
     window.addEventListener("conversation_mute_changed", handleMuteChange);
+    window.addEventListener("chat_retention_changed", handleRetentionChange);
+    window.addEventListener("friendship_updated", handleFriendshipUpdate);
     return () => {
       window.removeEventListener("conversation_mute_changed", handleMuteChange);
+      window.removeEventListener(
+        "chat_retention_changed",
+        handleRetentionChange
+      );
+      window.removeEventListener("friendship_updated", handleFriendshipUpdate);
     };
   }, [id]);
 
@@ -163,13 +208,15 @@ const ChatElement = ({
     return () => clearHoldTimer();
   }, []);
 
+  const displayName = nickname || name;
+
   const selectThisChat = () => {
     dispatch(SelectConversation({ room_id: id }));
     dispatch(
       SetCurrentConversation({
         id,
         user_id,
-        name,
+        name: displayName,
         online,
         img,
         msg,
@@ -276,7 +323,7 @@ const ChatElement = ({
   };
 
   const handleContactInfoClick = (e) => {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     handleCloseContextMenu();
     selectThisChat();
     dispatch(UpdateSidebarType("CONTACT"));
@@ -289,6 +336,47 @@ const ChatElement = ({
     e.stopPropagation();
     handleCloseContextMenu();
     triggerReplyToChat();
+  };
+
+  const handleQuickRetentionSelect = (e, modeKey) => {
+    e.stopPropagation();
+    handleCloseContextMenu();
+    setChatRetentionMode(id, modeKey);
+    setRetentionModeState(modeKey);
+    const info = getRetentionInfo(modeKey);
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: `${info.badge} Chat with ${displayName} set to: ${info.label}`,
+      })
+    );
+  };
+
+  const handleOpenRetentionClick = (e) => {
+    e.stopPropagation();
+    handleCloseContextMenu();
+    setOpenRetentionDialog(true);
+  };
+
+  const handleOpenFriendshipClick = (e) => {
+    e.stopPropagation();
+    handleCloseContextMenu();
+    setOpenFriendshipDialog(true);
+  };
+
+  const handleTogglePinClick = (e) => {
+    e.stopPropagation();
+    handleCloseContextMenu();
+    const nextPinned = toggleFriendPinned(id);
+    setIsPinnedState(nextPinned);
+    dispatch(
+      showSnackbar({
+        severity: "info",
+        message: nextPinned
+          ? `📌 Pinned ${displayName} as Best Friend`
+          : `Unpinned ${displayName}`,
+      })
+    );
   };
 
   const handleMuteMenuClick = (e) => {
@@ -431,6 +519,7 @@ const ChatElement = ({
   const theme = useTheme();
   const swipeProgress = Math.min(1, swipeOffset / CHAT_SWIPE_THRESHOLD);
   const isReadyToReply = swipeOffset >= CHAT_SWIPE_THRESHOLD;
+  const retentionInfo = getRetentionInfo(retentionMode);
 
   return (
     <>
@@ -526,7 +615,7 @@ const ChatElement = ({
             alignItems={"center"}
             justifyContent="space-between"
           >
-            <Stack direction="row" spacing={2}>
+            <Stack direction="row" spacing={2} sx={{ minWidth: 0 }}>
               {online ? (
                 <StyledBadge
                   overlap="circular"
@@ -534,34 +623,46 @@ const ChatElement = ({
                   variant="dot"
                 >
                   <Avatar
-                    alt={name}
-                    src={getAvatarUrl(img, name)}
+                    alt={displayName}
+                    src={getAvatarUrl(img, displayName)}
                     imgProps={{
                       onError: (e) => {
                         e.currentTarget.src = DEFAULT_USER_AVATAR;
                       },
                     }}
                   >
-                    {(name || "U")[0]}
+                    {(displayName || "U")[0]}
                   </Avatar>
                 </StyledBadge>
               ) : (
                 <Avatar
-                  alt={name}
-                  src={getAvatarUrl(img, name)}
+                  alt={displayName}
+                  src={getAvatarUrl(img, displayName)}
                   imgProps={{
                     onError: (e) => {
                       e.currentTarget.src = DEFAULT_USER_AVATAR;
                     },
                   }}
                 >
-                  {(name || "U")[0]}
+                  {(displayName || "U")[0]}
                 </Avatar>
               )}
               <Stack spacing={0.3} sx={{ minWidth: 0 }}>
-                <Typography variant="subtitle2" noWrap>
-                  {name}
-                </Typography>
+                <Stack direction="row" alignItems="center" spacing={0.6}>
+                  <Typography variant="subtitle2" noWrap>
+                    {displayName}
+                  </Typography>
+                  {isPinned && (
+                    <PushPin
+                      size={13}
+                      weight="fill"
+                      color={
+                        isSelected ? "#fff" : theme.palette.primary.main
+                      }
+                      style={{ flexShrink: 0 }}
+                    />
+                  )}
+                </Stack>
                 <Stack direction="row" alignItems="center" spacing={0.4}>
                   {last_msg_outgoing &&
                     (last_msg_status === "seen" ? (
@@ -593,11 +694,28 @@ const ChatElement = ({
                 </Stack>
               </Stack>
             </Stack>
-            <Stack spacing={1} alignItems={"flex-end"}>
+            <Stack spacing={0.8} alignItems={"flex-end"} sx={{ flexShrink: 0 }}>
               <Typography sx={{ fontWeight: 600 }} variant="caption">
                 {time}
               </Typography>
-              <Stack direction="row" spacing={0.5} alignItems="center">
+              <Stack direction="row" spacing={0.6} alignItems="center">
+                {retentionMode !== "permanent" && (
+                  <Box
+                    sx={{
+                      px: 0.6,
+                      py: 0.1,
+                      borderRadius: 1,
+                      fontSize: 10,
+                      fontWeight: 700,
+                      bgcolor: alpha(theme.palette.primary.main, 0.14),
+                      color: isSelected ? "#fff" : "primary.main",
+                      lineHeight: 1.3,
+                    }}
+                    title={`Delete chats: ${retentionInfo.label}`}
+                  >
+                    {retentionMode === "after_viewing" ? "👁️ View" : "🕒 24h"}
+                  </Box>
+                )}
                 {isMuted && (
                   <BellSlash size={14} color="#8696a0" weight="bold" />
                 )}
@@ -612,7 +730,7 @@ const ChatElement = ({
         </StyledChatBox>
       </Box>
 
-      {/* Hold (1s) / Right-click All 3-Dot Chat Options Menu */}
+      {/* Hold (1-2s) / Right-click Person ID & Chat Options Menu */}
       <Menu
         open={contextMenu !== null}
         onClose={handleCloseContextMenu}
@@ -624,12 +742,140 @@ const ChatElement = ({
         }
         PaperProps={{
           sx: {
-            minWidth: 190,
-            borderRadius: 2,
-            boxShadow: "0 6px 20px rgba(0,0,0,0.16)",
+            minWidth: 250,
+            borderRadius: 2.5,
+            boxShadow: "0 8px 28px rgba(0,0,0,0.22)",
+            py: 0.5,
           },
         }}
       >
+        {/* Person Header inside Hold Menu */}
+        <Box sx={{ px: 2, py: 1 }}>
+          <Stack direction="row" alignItems="center" spacing={1.2}>
+            <Avatar
+              src={getAvatarUrl(img, displayName)}
+              alt={displayName}
+              sx={{ width: 32, height: 32 }}
+            >
+              {(displayName || "U")[0]}
+            </Avatar>
+            <Box sx={{ minWidth: 0 }}>
+              <Typography variant="subtitle2" noWrap sx={{ fontWeight: 700 }}>
+                {displayName}
+              </Typography>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: "block", fontSize: 11 }}
+              >
+                {retentionInfo.badge} Timer: {retentionInfo.shortLabel}
+              </Typography>
+            </Box>
+          </Stack>
+        </Box>
+
+        <Divider sx={{ my: 0.5 }} />
+
+        {/* Chat Retention Direct Options: After Viewing, 24 Hours, Permanently */}
+        <Typography
+          variant="caption"
+          sx={{
+            px: 2,
+            pt: 0.5,
+            pb: 0.25,
+            display: "block",
+            color: "text.secondary",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: 0.5,
+            fontSize: 10,
+          }}
+        >
+          Delete Chats (Timer)
+        </Typography>
+
+        <MenuItem
+          onClick={(e) => handleQuickRetentionSelect(e, "after_viewing")}
+          sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+        >
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Eye size={18} />
+            <Typography variant="body2">Chat: After Viewing</Typography>
+          </Stack>
+          {retentionMode === "after_viewing" && (
+            <Check size={16} weight="bold" color={theme.palette.primary.main} />
+          )}
+        </MenuItem>
+
+        <MenuItem
+          onClick={(e) => handleQuickRetentionSelect(e, "24_hours")}
+          sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+        >
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <Clock size={18} />
+            <Typography variant="body2">Chat: 24 Hours</Typography>
+          </Stack>
+          {retentionMode === "24_hours" && (
+            <Check size={16} weight="bold" color={theme.palette.primary.main} />
+          )}
+        </MenuItem>
+
+        <MenuItem
+          onClick={(e) => handleQuickRetentionSelect(e, "permanent")}
+          sx={{ display: "flex", justifyContent: "space-between", gap: 1.5 }}
+        >
+          <Stack direction="row" alignItems="center" spacing={1.5}>
+            <InfinityIcon size={18} />
+            <Typography variant="body2">Chat: Permanently</Typography>
+          </Stack>
+          {retentionMode === "permanent" && (
+            <Check size={16} weight="bold" color={theme.palette.primary.main} />
+          )}
+        </MenuItem>
+
+        <MenuItem
+          onClick={handleOpenRetentionClick}
+          sx={{ display: "flex", gap: 1.5 }}
+        >
+          <Clock size={18} />
+          <Typography variant="body2" color="primary.main" fontWeight={600}>
+            Delete Chats Settings...
+          </Typography>
+        </MenuItem>
+
+        <Divider sx={{ my: 0.5 }} />
+
+        {/* Manage Friendship & Notifications */}
+        <MenuItem
+          onClick={handleOpenFriendshipClick}
+          sx={{ display: "flex", gap: 1.5 }}
+        >
+          <Handshake size={18} />
+          <Typography variant="body2" fontWeight={600}>
+            Manage Friendship
+          </Typography>
+        </MenuItem>
+
+        <MenuItem onClick={handleMuteMenuClick} sx={{ display: "flex", gap: 1.5 }}>
+          <BellSlash size={18} />
+          <Typography variant="body2">
+            {isMuted ? "Unmute notifications" : "Mute notifications"}
+          </Typography>
+        </MenuItem>
+
+        <MenuItem
+          onClick={handleTogglePinClick}
+          sx={{ display: "flex", gap: 1.5 }}
+        >
+          <PushPin size={18} />
+          <Typography variant="body2">
+            {isPinned ? "Unpin Best Friend" : "Pin as Best Friend"}
+          </Typography>
+        </MenuItem>
+
+        <Divider sx={{ my: 0.5 }} />
+
+        {/* Standard Chat Actions */}
         <MenuItem onClick={handleReplyMenuClick} sx={{ display: "flex", gap: 1.5 }}>
           <ArrowBendUpLeft size={18} />
           <Typography variant="body2">Reply</Typography>
@@ -641,13 +887,6 @@ const ChatElement = ({
         >
           <User size={18} />
           <Typography variant="body2">Contact info</Typography>
-        </MenuItem>
-
-        <MenuItem onClick={handleMuteMenuClick} sx={{ display: "flex", gap: 1.5 }}>
-          <BellSlash size={18} />
-          <Typography variant="body2">
-            {isMuted ? "Unmute notifications" : "Mute notifications"}
-          </Typography>
         </MenuItem>
 
         <MenuItem onClick={handleArchiveMenuClick} sx={{ display: "flex", gap: 1.5 }}>
@@ -673,6 +912,28 @@ const ChatElement = ({
         </MenuItem>
       </Menu>
 
+      {/* Delete Chats / Message Retention Dialog (After Viewing, 24 Hours, Permanently) */}
+      <ChatRetentionDialog
+        open={openRetentionDialog}
+        onClose={() => setOpenRetentionDialog(false)}
+        conversationId={id}
+        personName={displayName}
+      />
+
+      {/* Manage Friendship Dialog */}
+      <ManageFriendshipDialog
+        open={openFriendshipDialog}
+        onClose={() => setOpenFriendshipDialog(false)}
+        conversationId={id}
+        userId={user_id}
+        personName={name}
+        personImg={img}
+        personAbout={about}
+        online={online}
+        onOpenContactInfo={() => handleContactInfoClick()}
+        onOpenRetentionDialog={() => setOpenRetentionDialog(true)}
+      />
+
       {/* Mute Notifications Dialog */}
       <Dialog
         open={openMuteModal}
@@ -682,7 +943,7 @@ const ChatElement = ({
         onClick={(e) => e.stopPropagation()}
       >
         <DialogTitle sx={{ pb: 1 }}>
-          Mute notifications for {name || "this chat"}?
+          Mute notifications for {displayName || "this chat"}?
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ mb: 2 }}>
@@ -732,8 +993,8 @@ const ChatElement = ({
         <DialogTitle>Clear this chat?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to clear messages in this chat with {name}?
-            Messages will be deleted from your device only.
+            Are you sure you want to clear messages in this chat with{" "}
+            {displayName}? Messages will be deleted from your device only.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
@@ -759,9 +1020,9 @@ const ChatElement = ({
         <DialogTitle>Delete this chat?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Are you sure you want to delete this chat with {name}? This chat and
-            its messages will be deleted from your device only. The other person
-            will still have their chat.
+            Are you sure you want to delete this chat with {displayName}? This
+            chat and its messages will be deleted from your device only. The
+            other person will still have their chat.
           </DialogContentText>
         </DialogContent>
         <DialogActions>
