@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect } from "react";
 import * as Yup from "yup";
 import {
   Button,
@@ -11,41 +11,49 @@ import {
 
 import { yupResolver } from "@hookform/resolvers/yup";
 import { useForm } from "react-hook-form";
+import { useDispatch, useSelector } from "react-redux";
 import FormProvider from "../../components/hook-form/FormProvider";
 import { RHFTextField } from "../../components/hook-form";
 import RHFAutocomplete from "../../components/hook-form/RHFAutocomplete";
+import { FetchAllUsers, showSnackbar } from "../../redux/slices/app";
+import { getMockAvatar } from "../../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const TAGS_OPTION = [
-  "Toy Story 3",
-  "Logan",
-  "Full Metal Jacket",
-  "Dangal",
-  "The Sting",
-  "2001: A Space Odyssey",
-  "Singin' in the Rain",
-  "Toy Story",
-  "Bicycle Thieves",
-  "The Kid",
-  "Inglourious Basterds",
-  "Snatch",
-  "3 Idiots",
+const FALLBACK_MEMBERS = [
+  "Aarav Sharma",
+  "Priya Patel",
+  "Rohan Verma",
+  "Ananya Gupta",
+  "Vikram Singh",
+  "Neha Joshi",
 ];
 
 const CreateGroupForm = ({ handleClose }) => {
+  const dispatch = useDispatch();
+  const { all_users = [] } = useSelector((state) => state.app);
+
+  useEffect(() => {
+    dispatch(FetchAllUsers());
+  }, [dispatch]);
+
+  const memberOptions = React.useMemo(() => {
+    const names = all_users
+      .map((u) => `${u?.firstName || ""} ${u?.lastName || ""}`.trim())
+      .filter(Boolean);
+    return names.length > 0 ? Array.from(new Set(names)) : FALLBACK_MEMBERS;
+  }, [all_users]);
+
   const NewGroupSchema = Yup.object().shape({
     title: Yup.string().required("Title is required"),
-
     members: Yup.array().min(2, "Must have at least 2 members"),
   });
 
   const defaultValues = {
     title: "",
-
-    tags: [],
+    members: [],
   };
 
   const methods = useForm({
@@ -55,16 +63,40 @@ const CreateGroupForm = ({ handleClose }) => {
 
   const {
     reset,
-    watch,
-    setValue,
     handleSubmit,
-    formState: { isSubmitting, isValid },
   } = methods;
 
   const onSubmit = async (data) => {
     try {
-      //  API Call
-      console.log("DATA", data);
+      const newGroup = {
+        id: `group_${Date.now()}`,
+        img: getMockAvatar(data.title),
+        name: data.title.trim(),
+        msg: `Members: ${data.members.join(", ")}`,
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        unread: 0,
+        pinned: false,
+        online: true,
+      };
+      const existing = JSON.parse(
+        localStorage.getItem("trackon_custom_groups") || "[]"
+      );
+      localStorage.setItem(
+        "trackon_custom_groups",
+        JSON.stringify([newGroup, ...existing])
+      );
+      window.dispatchEvent(new CustomEvent("groups_updated"));
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: `Group "${data.title.trim()}" created!`,
+        })
+      );
+      reset();
+      handleClose();
     } catch (error) {
       console.error(error);
     }
@@ -72,14 +104,14 @@ const CreateGroupForm = ({ handleClose }) => {
 
   return (
     <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit)}>
-      <Stack spacing={3}>
-        <RHFTextField name="title" label="Title" />
+      <Stack spacing={3} sx={{ pt: 1 }}>
+        <RHFTextField name="title" label="Group Title" />
         <RHFAutocomplete
           name="members"
           label="Members"
           multiple
           freeSolo
-          options={TAGS_OPTION.map((option) => option)}
+          options={memberOptions}
           ChipProps={{ size: "medium" }}
         />
         <Stack
@@ -112,7 +144,7 @@ const CreateGroup = ({ open, handleClose }) => {
     >
       <DialogTitle>{"Create New Group"}</DialogTitle>
 
-      <DialogContent sx={{ mt: 4 }}>
+      <DialogContent sx={{ mt: 1 }}>
         {/* Create Group Form */}
         <CreateGroupForm handleClose={handleClose} />
       </DialogContent>

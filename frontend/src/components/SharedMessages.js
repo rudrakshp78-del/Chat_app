@@ -9,17 +9,18 @@ import {
   Grid,
 } from "@mui/material";
 import { useTheme } from "@mui/material/styles";
-import { CaretLeft } from "phosphor-react";
-import { useDispatch } from "react-redux";
+import { CaretLeft, ImageSquare, LinkSimple, FileText } from "phosphor-react";
+import { useDispatch, useSelector } from "react-redux";
 import { UpdateSidebarType } from "../redux/slices/app";
-import { getMockAvatar } from "../utils/getAvatarUrl";
-import { SHARED_LINKS } from "../data";
-import { SHARED_DOCS } from "../data";
 import { LinkMsg, DocMsg } from "./Conversation/MsgType";
 
 const SharedMessages = () => {
   const theme = useTheme();
   const dispatch = useDispatch();
+
+  const { current_messages = [] } = useSelector(
+    (state) => state.conversation.direct_chat
+  );
 
   const [value, setValue] = React.useState(0);
 
@@ -31,6 +32,28 @@ const SharedMessages = () => {
     dispatch(UpdateSidebarType("CONTACT"));
   };
 
+  const sharedMedia = React.useMemo(() => {
+    return (current_messages || []).filter((m) => {
+      const sub = (m?.subtype || "").toLowerCase();
+      return (sub === "img" || sub === "media") && (m?.img || m?.fileUrl);
+    });
+  }, [current_messages]);
+
+  const sharedLinks = React.useMemo(() => {
+    return (current_messages || []).filter((m) => {
+      const sub = (m?.subtype || "").toLowerCase();
+      if (sub === "link") return true;
+      return typeof m?.message === "string" && /https?:\/\/\S+/i.test(m.message);
+    });
+  }, [current_messages]);
+
+  const sharedDocs = React.useMemo(() => {
+    return (current_messages || []).filter((m) => {
+      const sub = (m?.subtype || "").toLowerCase();
+      return sub === "doc";
+    });
+  }, [current_messages]);
+
   return (
     <Box
       sx={{
@@ -41,7 +64,6 @@ const SharedMessages = () => {
       }}
     >
       <Stack sx={{ height: "100%" }}>
-
         {/* Header */}
         <Box
           sx={{
@@ -78,9 +100,9 @@ const SharedMessages = () => {
           onChange={handleChange}
           centered
         >
-          <Tab label="Media" />
-          <Tab label="Links" />
-          <Tab label="Docs" />
+          <Tab label={`Media (${sharedMedia.length})`} />
+          <Tab label={`Links (${sharedLinks.length})`} />
+          <Tab label={`Docs (${sharedDocs.length})`} />
         </Tabs>
 
         {/* Body */}
@@ -91,26 +113,49 @@ const SharedMessages = () => {
             overflowY: "auto",
           }}
           p={3}
-          spacing={value === 1 ? 1 : 3}
+          spacing={value === 1 ? 1.5 : 3}
         >
           {(() => {
             switch (value) {
               // ---------------- MEDIA ----------------
               case 0:
+                if (sharedMedia.length === 0) {
+                  return (
+                    <Stack
+                      alignItems="center"
+                      justifyContent="center"
+                      spacing={1}
+                      sx={{ py: 6, color: "text.secondary" }}
+                    >
+                      <ImageSquare size={40} weight="duotone" />
+                      <Typography variant="body2">
+                        No media shared in this chat yet
+                      </Typography>
+                    </Stack>
+                  );
+                }
                 return (
                   <Grid container spacing={2}>
-                    {[0, 1, 2, 3, 4, 5, 6].map((el) => (
-                      <Grid item xs={4} key={el}>
-                        <img
-                          src={getMockAvatar(`shared-${el}`)}
-                          alt="Shared media"
-                          style={{
-                            width: "100%",
-                            height: "80px",
-                            objectFit: "cover",
-                            borderRadius: "8px",
-                          }}
-                        />
+                    {sharedMedia.map((el, index) => (
+                      <Grid item xs={4} key={el.id || index}>
+                        <Box
+                          component="a"
+                          href={el.img || el.fileUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          sx={{ display: "block" }}
+                        >
+                          <img
+                            src={el.img || el.fileUrl}
+                            alt={el.message || "Shared media"}
+                            style={{
+                              width: "100%",
+                              height: "80px",
+                              objectFit: "cover",
+                              borderRadius: "8px",
+                            }}
+                          />
+                        </Box>
                       </Grid>
                     ))}
                   </Grid>
@@ -118,12 +163,28 @@ const SharedMessages = () => {
 
               // ---------------- LINKS ----------------
               case 1:
+                if (sharedLinks.length === 0) {
+                  return (
+                    <Stack
+                      alignItems="center"
+                      justifyContent="center"
+                      spacing={1}
+                      sx={{ py: 6, color: "text.secondary" }}
+                    >
+                      <LinkSimple size={40} weight="duotone" />
+                      <Typography variant="body2">
+                        No links shared in this chat yet
+                      </Typography>
+                    </Stack>
+                  );
+                }
                 return (
                   <Stack spacing={2}>
-                    {SHARED_LINKS.map((el, index) => (
+                    {sharedLinks.map((el, index) => (
                       <LinkMsg
-                        key={index}
+                        key={el.id || index}
                         el={el}
+                        menu={false}
                       />
                     ))}
                   </Stack>
@@ -131,12 +192,28 @@ const SharedMessages = () => {
 
               // ---------------- DOCS ----------------
               case 2:
+                if (sharedDocs.length === 0) {
+                  return (
+                    <Stack
+                      alignItems="center"
+                      justifyContent="center"
+                      spacing={1}
+                      sx={{ py: 6, color: "text.secondary" }}
+                    >
+                      <FileText size={40} weight="duotone" />
+                      <Typography variant="body2">
+                        No documents shared in this chat yet
+                      </Typography>
+                    </Stack>
+                  );
+                }
                 return (
                   <Stack spacing={2}>
-                    {SHARED_DOCS.map((el, index) => (
+                    {sharedDocs.map((el, index) => (
                       <DocMsg
-                        key={index}
+                        key={el.id || index}
                         el={el}
+                        menu={false}
                       />
                     ))}
                   </Stack>

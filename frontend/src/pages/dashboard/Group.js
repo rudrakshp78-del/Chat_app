@@ -22,10 +22,39 @@ import CreateGroup from "../../sections/dashboard/CreateGroup";
 const Group = () => {
   const theme = useTheme();
   const [openDialog, setOpenDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [customGroups, setCustomGroups] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("trackon_custom_groups") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
-   const handleCloseDailog = () => {
+  React.useEffect(() => {
+    const syncGroups = () => {
+      try {
+        setCustomGroups(
+          JSON.parse(localStorage.getItem("trackon_custom_groups") || "[]")
+        );
+      } catch {
+        setCustomGroups([]);
+      }
+    };
+    window.addEventListener("groups_updated", syncGroups);
+    return () => window.removeEventListener("groups_updated", syncGroups);
+  }, []);
+
+  const handleCloseDailog = () => {
     setOpenDialog(false);
-  }
+  };
+
+  const allGroups = React.useMemo(() => {
+    const combined = [...customGroups, ...ChatList];
+    if (!searchQuery.trim()) return combined;
+    const q = searchQuery.trim().toLowerCase();
+    return combined.filter((el) => el?.name?.toLowerCase().includes(q));
+  }, [customGroups, searchQuery]);
 
   return (
     <>
@@ -44,7 +73,11 @@ const Group = () => {
             flexDirection: "column",
           }}
         >
-          <Stack p={{ xs: 2, sm: 3 }} spacing={2} sx={{ height: "100%", flex: 1, minHeight: 0 }}>
+          <Stack
+            p={{ xs: 2, sm: 3 }}
+            spacing={2}
+            sx={{ height: "100%", flex: 1, minHeight: 0 }}
+          >
             <Stack>
               <Typography variant="h5">Groups</Typography>
             </Stack>
@@ -55,7 +88,9 @@ const Group = () => {
                 </SearchIconWrapper>
 
                 <StyledInputBase
-                  placeholder="Search..."
+                  placeholder="Search groups..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   inputProps={{
                     "aria-label": "search",
                   }}
@@ -67,49 +102,57 @@ const Group = () => {
               justifyContent="space-between"
               alignItems={"center"}
             >
-              <Typography variant="subtitle2" component={Link}>
+              <Typography
+                variant="subtitle2"
+                component={Link}
+                onClick={() => setOpenDialog(true)}
+                sx={{ cursor: "pointer", textDecoration: "none" }}
+              >
                 Create New Group
               </Typography>
-              <IconButton onClick={() => {
-                setOpenDialog(true);
-              }}>
+              <IconButton
+                onClick={() => {
+                  setOpenDialog(true);
+                }}
+              >
                 <Plus style={{ color: theme.palette.primary.main }} />
               </IconButton>
             </Stack>
             <Divider />
-            <Stack spacing={3} sx={{ flexGrow: 1, overflowY: "scroll", height: "100%" }}>
+            <Stack
+              spacing={3}
+              sx={{ flexGrow: 1, overflowY: "auto", height: "100%" }}
+            >
               <SimpleBarStyle timeout={500} clickOnTrack={false}>
-                <Stack>
-                  {/*  */}
+                <Stack spacing={2}>
                   <Typography variant="subtitle2" sx={{ color: "#676667" }}>
                     Pinned
                   </Typography>
-                  {/* Chat List */}
-                  {ChatList.filter((el) => el.pinned).map((el) => (
-                    <ChatElement key={el.id} {...el} />
-                  ))}
-                      {/*  */}
-                   <Typography variant="subtitle2" sx={{ color: "#676667" }}>
+                  {allGroups
+                    .filter((el) => el.pinned)
+                    .map((el) => (
+                      <ChatElement key={el.id} {...el} />
+                    ))}
+
+                  <Typography variant="subtitle2" sx={{ color: "#676667", pt: 1 }}>
                     All Groups
                   </Typography>
-                  {/* Chat List */}
-                  {ChatList.filter((el) => !el.pinned).map((el) => (
-                    <ChatElement key={el.id} {...el} />
-                  ))}
+                  {allGroups
+                    .filter((el) => !el.pinned)
+                    .map((el) => (
+                      <ChatElement key={el.id} {...el} />
+                    ))}
                 </Stack>
-          
               </SimpleBarStyle>
             </Stack>
           </Stack>
         </Box>
-        {/* right */}
-        {/* // TODO => Reuse Conversation components */}
       </Stack>
-       {openDialog && <CreateGroup open={openDialog} handleClose={handleCloseDailog}/>}
-
+      {openDialog && (
+        <CreateGroup open={openDialog} handleClose={handleCloseDailog} />
+      )}
     </>
   );
 };
-
 
 export default Group;

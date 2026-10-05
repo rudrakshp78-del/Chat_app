@@ -15,15 +15,22 @@ import StartCall from "../../sections/dashboard/StartCall";
 
 
 const Call = () => {
-    const theme = useTheme();
+  const theme = useTheme();
+  const [openDialog, setOpenDialog] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
-     const [openDialog, setOpenDialog] = useState(false);
-    
-       const handleCloseDailog = () => {
-        setOpenDialog(false);
-      }
+  const handleCloseDailog = () => {
+    setOpenDialog(false);
+  };
+
+  const filteredLogs = CallLogs.filter((el) =>
+    !searchQuery.trim()
+      ? true
+      : el?.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
+  );
+
   return (
-    <>   
+    <>
       <Stack direction="row" sx={{ width: "100%", height: "100%" }}>
         {/* left */}
         <Box
@@ -39,7 +46,11 @@ const Call = () => {
             flexDirection: "column",
           }}
         >
-          <Stack p={{ xs: 2, sm: 3 }} spacing={2} sx={{ height: "100%", flex: 1, minHeight: 0 }}>
+          <Stack
+            p={{ xs: 2, sm: 3 }}
+            spacing={2}
+            sx={{ height: "100%", flex: 1, minHeight: 0 }}
+          >
             <Stack>
               <Typography variant="h5">Call Logs</Typography>
             </Stack>
@@ -51,6 +62,8 @@ const Call = () => {
 
                 <StyledInputBase
                   placeholder="Search..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
                   inputProps={{
                     "aria-label": "search",
                   }}
@@ -62,40 +75,48 @@ const Call = () => {
               justifyContent="space-between"
               alignItems={"center"}
             >
-              <Typography variant="subtitle2" component={Link}>
+              <Typography
+                variant="subtitle2"
+                component={Link}
+                onClick={() => setOpenDialog(true)}
+                sx={{ cursor: "pointer", textDecoration: "none" }}
+              >
                 Start Conversation
               </Typography>
-              <IconButton onClick={() => {
-                setOpenDialog(true);
-              }}>
-                <Plus style={{ color: (theme) => theme.palette.primary.main }} />
+              <IconButton
+                onClick={() => {
+                  setOpenDialog(true);
+                }}
+              >
+                <Plus style={{ color: theme.palette.primary.main }} />
               </IconButton>
             </Stack>
             <Divider />
-            <Stack spacing={3} sx={{ flexGrow: 1, overflowY: "scroll", height: "100%" }}>
+            <Stack
+              spacing={3}
+              sx={{ flexGrow: 1, overflowY: "auto", height: "100%" }}
+            >
               <SimpleBarStyle timeout={500} clickOnTrack={false}>
-                <Stack>
-                  {/*  */}
+                <Stack spacing={2}>
                   <Typography variant="subtitle2" sx={{ color: "#676667" }}>
-                    Pinned
+                    All Calls
                   </Typography>
-                 {/* Call Logs */}
-                 {CallLogs.map((el) =>  <CallLogElement {...el} /> )}
-                
+                  {/* Call Logs */}
+                  {filteredLogs.map((el) => (
+                    <CallLogElement key={el.id} {...el} />
+                  ))}
                 </Stack>
-          
               </SimpleBarStyle>
             </Stack>
           </Stack>
         </Box>
-        {/* right */}
-        {/* // TODO => Reuse Conversation components */}
       </Stack>
 
-      {openDialog && <StartCall open={openDialog} handleClose={handleCloseDailog} />}
-      </>
-
-  )
+      {openDialog && (
+        <StartCall open={openDialog} handleClose={handleCloseDailog} />
+      )}
+    </>
+  );
 };
 
 export default Call;

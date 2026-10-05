@@ -126,6 +126,7 @@ const SideBar = () => {
           <Stack alignItems="center" spacing={4}>
             {/* LOGO */}
             <Box
+              onClick={() => navigate("/app")}
               sx={{
                 backgroundColor: theme.palette.primary.main,
                 height: 64,
@@ -135,11 +136,15 @@ const SideBar = () => {
                 alignItems: "center",
                 justifyContent: "center",
                 overflow: "hidden",
+                cursor: "pointer",
               }}
             >
               <img
-                src={Logo}
-                alt="chat app logo"
+                src="/Trackon Opposing Finger Gun Logo.png"
+                onError={(e) => {
+                  e.currentTarget.src = Logo;
+                }}
+                alt="Trackon logo"
                 style={{
                   width: "100%",
                   height: "100%",
@@ -237,7 +242,10 @@ const SideBar = () => {
           {/* BOTTOM */}
           <Stack spacing={4} alignItems="center">
             {/* DARK/LIGHT MODE */}
-            <AntSwitch onChange={onToggleMode} defaultChecked />
+            <AntSwitch
+              checked={theme.palette.mode === "dark"}
+              onChange={onToggleMode}
+            />
 
             {/* AVATAR */}
             <Avatar
@@ -256,6 +264,7 @@ const SideBar = () => {
               sx={{
                 width: 40,
                 height: 40,
+                cursor: "pointer",
               }}
             >
               {(user?.firstName || "U")[0]}
@@ -292,13 +301,6 @@ const SideBar = () => {
                     }}
                   >
                     <Stack
-                      onClick={() => {
-                        if (idx === 2) {
-                          dispatch(LogoutUser());
-                        } else {
-                          navigate(getMenuPath(idx));
-                        }
-                      }}
                       sx={{ width: 100 }}
                       direction="row"
                       alignItems={"center"}
@@ -314,17 +316,6 @@ const SideBar = () => {
           </Stack>
         </Stack>
       </Box>
-
-      {/* MAIN CONTENT */}
-      {/* MAIN CONTENT */}
-      <Box
-        sx={{
-          flex: 1,
-          height: "100vh",
-          minWidth: 0,
-          overflow: "hidden",
-        }}
-      ></Box>
     </Box>
   );
 };

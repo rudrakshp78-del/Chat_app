@@ -47,7 +47,7 @@ const FAQS = [
   },
   {
     q: "How do I customize my Chat Wallpaper?",
-    a: "Go to Settings > Chat Wallpaper. You can select classic WhatsApp doodles, 12 curated solid colors, adjust wallpaper dimming, or upload any photo from your device gallery.",
+    a: "Go to Settings > Chat Wallpaper. You can select classic Trackon doodles, 12 curated solid colors, adjust wallpaper dimming, or upload any photo from your device gallery.",
   },
   {
     q: "How do Desktop Notifications work outside the app?",
@@ -101,8 +101,8 @@ const HelpDialog = ({ open, handleClose }) => {
       dispatch(
         showSnackbar({
           severity: "info",
-          message: "You are using the latest version of WhatsApp (v2.5.0)",
-        })
+          message: "You are using the latest version of Trackon (v2.5.0)",
+        }),
       );
     }, 800);
   };
@@ -176,7 +176,7 @@ const HelpDialog = ({ open, handleClose }) => {
         {tabIndex === 0 && (
           <Stack spacing={1.5}>
             <Typography variant="caption" color="text.secondary">
-              Frequently asked questions about WhatsApp features:
+              Frequently asked questions about Trackon features:
             </Typography>
             {FAQS.map((faq, idx) => (
               <Accordion
@@ -210,7 +210,7 @@ const HelpDialog = ({ open, handleClose }) => {
         {tabIndex === 1 && (
           <Stack spacing={2.5}>
             <Typography variant="body2" color="text.secondary">
-              Encountered a problem or have an idea to improve WhatsApp? Tell us
+              Encountered a problem or have an idea to improve Trackon? Tell us
               about it below:
             </Typography>
 
@@ -225,7 +225,9 @@ const HelpDialog = ({ open, handleClose }) => {
                 <MenuItem value="chat">Chat & Messaging</MenuItem>
                 <MenuItem value="calls">Audio / Video Calling</MenuItem>
                 <MenuItem value="status">Status & Media</MenuItem>
-                <MenuItem value="notifications">Notifications & Sounds</MenuItem>
+                <MenuItem value="notifications">
+                  Notifications & Sounds
+                </MenuItem>
                 <MenuItem value="other">Other Issue</MenuItem>
               </Select>
             </FormControl>

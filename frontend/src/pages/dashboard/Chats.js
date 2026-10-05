@@ -46,6 +46,30 @@ const Chats = () => {
   );
   const { myStatuses, otherStatuses } = useSelector((state) => state.status);
 
+  const [showArchived, setShowArchived] = useState(false);
+  const [archivedIds, setArchivedIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("trackon_archived_chats") || "[]");
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    const syncArchived = () => {
+      try {
+        setArchivedIds(
+          JSON.parse(localStorage.getItem("trackon_archived_chats") || "[]")
+        );
+      } catch {
+        setArchivedIds([]);
+      }
+    };
+    window.addEventListener("archived_chats_updated", syncArchived);
+    return () =>
+      window.removeEventListener("archived_chats_updated", syncArchived);
+  }, []);
+
   useEffect(() => {
     dispatch(FetchAllStatuses());
   }, [dispatch]);
@@ -258,9 +282,31 @@ const Chats = () => {
 
           {/* ARCHIVE */}
           <Stack spacing={1}>
-            <Stack direction="row" alignItems="center" spacing={1.5}>
-              <ArchiveBox size={24} />
-              <Button>Archive</Button>
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+            >
+              <Stack direction="row" alignItems="center" spacing={1.5}>
+                <ArchiveBox
+                  size={24}
+                  color={showArchived ? theme.palette.primary.main : undefined}
+                />
+                <Button
+                  onClick={() => setShowArchived((prev) => !prev)}
+                  color={showArchived ? "primary" : "inherit"}
+                >
+                  {showArchived ? "Back to All Chats" : "Archived"}
+                </Button>
+              </Stack>
+              {archivedIds.length > 0 && (
+                <Typography
+                  variant="caption"
+                  sx={{ color: "primary.main", fontWeight: 600, pr: 1 }}
+                >
+                  {archivedIds.length}
+                </Typography>
+              )}
             </Stack>
 
             <Divider />
@@ -284,11 +330,14 @@ const Chats = () => {
                     marginTop: 2,
                   }}
                 >
-                  All Chats
+                  {showArchived ? "Archived Chats" : "All Chats"}
                 </Typography>
 
                 {conversations
-                  .filter((el) => !el.pinned)
+                  .filter((el) => {
+                    const isArch = archivedIds.includes(String(el.id));
+                    return showArchived ? isArch : !isArch;
+                  })
                   .filter((el) => {
                     if (!searchTerm.trim()) return true;
                     return el?.name

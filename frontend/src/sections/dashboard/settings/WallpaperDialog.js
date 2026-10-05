@@ -27,7 +27,7 @@ import { useDispatch } from "react-redux";
 import { showSnackbar } from "../../../redux/slices/app";
 import {
   WALLPAPER_COLORS,
-  WHATSAPP_DOODLE_SVG,
+  Trackon_DOODLE_SVG,
   DEFAULT_WALLPAPER,
   getSavedWallpaper,
   saveWallpaper,
@@ -135,7 +135,7 @@ const WallpaperDialog = ({ open, handleClose }) => {
     if (wallpaper.overlayDoodles) {
       return {
         backgroundColor: baseColor,
-        backgroundImage: `url("${WHATSAPP_DOODLE_SVG}")`,
+        backgroundImage: `url("${Trackon_DOODLE_SVG}")`,
         backgroundRepeat: "repeat",
       };
     }
@@ -181,7 +181,7 @@ const WallpaperDialog = ({ open, handleClose }) => {
                 Chat Wallpaper Studio
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Set custom background colors, WhatsApp doodles, or gallery photos
+                Set custom background colors, Trackon doodles, or gallery photos
               </Typography>
             </Stack>
           </Stack>
@@ -267,7 +267,7 @@ const WallpaperDialog = ({ open, handleClose }) => {
                     fontSize: "0.85rem",
                   }}
                 >
-                  It looks awesome! Just like WhatsApp! 🚀
+                  It looks awesome! Just like Trackon! 🚀
                   <Typography
                     variant="caption"
                     sx={{
@@ -317,7 +317,7 @@ const WallpaperDialog = ({ open, handleClose }) => {
                 fontWeight={700}
                 letterSpacing={1.2}
               >
-                WhatsApp Solid Colors
+                Trackon Solid Colors
               </Typography>
               <Stack
                 direction="row"
@@ -383,11 +383,11 @@ const WallpaperDialog = ({ open, handleClose }) => {
                   <Stack direction="row" alignItems="center" spacing={1}>
                     <Sparkle size={18} color="#00A884" />
                     <Typography variant="subtitle2" fontWeight={600}>
-                      Add WhatsApp Doodles
+                      Add Trackon Doodles
                     </Typography>
                   </Stack>
                   <Typography variant="caption" color="text.secondary">
-                    Overlay classic WhatsApp doodle graphics on top of the wallpaper
+                    Overlay classic Trackon doodle graphics on top of the wallpaper
                   </Typography>
                 </Stack>
                 <Switch

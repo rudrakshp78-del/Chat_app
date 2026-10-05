@@ -38,7 +38,7 @@ const RequestAccountDialog = ({ open, handleClose }) => {
 
   const [status, setStatus] = useState(() => {
     try {
-      return localStorage.getItem("whatsapp_account_report_status") || "idle";
+      return localStorage.getItem("Trackon_account_report_status") || "idle";
     } catch {
       return "idle";
     }
@@ -51,7 +51,7 @@ const RequestAccountDialog = ({ open, handleClose }) => {
     setTimeout(() => {
       setLoading(false);
       setStatus("ready");
-      localStorage.setItem("whatsapp_account_report_status", "ready");
+      localStorage.setItem("Trackon_account_report_status", "ready");
       dispatch(
         showSnackbar({
           severity: "success",
@@ -63,13 +63,14 @@ const RequestAccountDialog = ({ open, handleClose }) => {
 
   const handleDownload = () => {
     const reportData = {
-      title: "WhatsApp Account Information Report",
+      title: "Trackon Account Information Report",
       generatedAt: new Date().toISOString(),
       account: {
         userId: user?._id || window.localStorage.getItem("user_id"),
-        name: `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User",
+        name:
+          `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User",
         email: user?.email || "Not specified",
-        about: user?.about || "Hey there! I am using WhatsApp.",
+        about: user?.about || "Hey there! I am using Trackon.",
         status: user?.status || "Online",
         avatar: user?.avatar ? "Custom DP Configured" : "Default Avatar",
         links: user?.links || [],
@@ -91,7 +92,7 @@ const RequestAccountDialog = ({ open, handleClose }) => {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `WhatsApp_Account_Report_${Date.now()}.json`;
+    link.download = `Trackon_Account_Report_${Date.now()}.json`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -132,7 +133,7 @@ const RequestAccountDialog = ({ open, handleClose }) => {
               Request Account Info
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              Create a formal report of your WhatsApp account details
+              Create a formal report of your Trackon account details
             </Typography>
           </Stack>
         </Stack>
@@ -159,12 +160,15 @@ const RequestAccountDialog = ({ open, handleClose }) => {
             }}
           >
             <Typography variant="body2" color="text.secondary">
-              Create a report of your WhatsApp account information and settings, which
-              you can access or port to another app.
+              Create a report of your Trackon account information and settings,
+              which you can access or port to another app.
             </Typography>
-            <Alert severity="info" sx={{ mt: 1.5, py: 0.5, fontSize: "0.8rem" }}>
-              This report does <strong>not</strong> include your personal messages, as
-              chat messages are end-to-end encrypted.
+            <Alert
+              severity="info"
+              sx={{ mt: 1.5, py: 0.5, fontSize: "0.8rem" }}
+            >
+              This report does <strong>not</strong> include your personal
+              messages, as chat messages are end-to-end encrypted.
             </Alert>
           </Paper>
 

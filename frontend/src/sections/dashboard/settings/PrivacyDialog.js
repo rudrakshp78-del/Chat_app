@@ -43,7 +43,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
 
   const [privacy, setPrivacy] = useState(() => {
     try {
-      const saved = localStorage.getItem("whatsapp_privacy_settings");
+      const saved = localStorage.getItem("Trackon_privacy_settings");
       return saved ? { ...DEFAULT_PRIVACY, ...JSON.parse(saved) } : DEFAULT_PRIVACY;
     } catch {
       return DEFAULT_PRIVACY;
@@ -53,7 +53,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
   const handleChange = (field, value) => {
     const updated = { ...privacy, [field]: value };
     setPrivacy(updated);
-    localStorage.setItem("whatsapp_privacy_settings", JSON.stringify(updated));
+    localStorage.setItem("Trackon_privacy_settings", JSON.stringify(updated));
   };
 
   const handleUnblock = (contactName) => {
@@ -68,7 +68,7 @@ const PrivacyDialog = ({ open, handleClose }) => {
   };
 
   const handleSave = () => {
-    localStorage.setItem("whatsapp_privacy_settings", JSON.stringify(privacy));
+    localStorage.setItem("Trackon_privacy_settings", JSON.stringify(privacy));
     dispatch(
       showSnackbar({
         severity: "success",

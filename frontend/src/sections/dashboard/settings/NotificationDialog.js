@@ -146,7 +146,7 @@ const NotificationDialog = ({ open, handleClose }) => {
               <Stack spacing={0}>
                 <Typography variant="subtitle2">Message Chime Sound</Typography>
                 <Typography variant="caption" color="text.secondary">
-                  Play WhatsApp tone when receiving messages
+                  Play Trackon tone when receiving messages
                 </Typography>
               </Stack>
             </Stack>

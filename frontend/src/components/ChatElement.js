@@ -22,6 +22,7 @@ import {
 import { styled, useTheme, alpha } from "@mui/material/styles";
 import { useDispatch, useSelector } from "react-redux";
 import {
+  ArchiveBox,
   ArrowBendUpLeft,
   BellSlash,
   Check,
@@ -327,6 +328,53 @@ const ChatElement = ({
     );
   };
 
+  const [isArchived, setIsArchived] = React.useState(() => {
+    try {
+      const archived = JSON.parse(
+        localStorage.getItem("trackon_archived_chats") || "[]"
+      );
+      return Boolean(id && archived.includes(String(id)));
+    } catch {
+      return false;
+    }
+  });
+
+  const handleArchiveMenuClick = (e) => {
+    e.stopPropagation();
+    handleCloseContextMenu();
+    if (!id) return;
+    try {
+      const archived = JSON.parse(
+        localStorage.getItem("trackon_archived_chats") || "[]"
+      );
+      const key = String(id);
+      let next;
+      if (archived.includes(key)) {
+        next = archived.filter((item) => item !== key);
+        setIsArchived(false);
+        dispatch(
+          showSnackbar({
+            severity: "success",
+            message: "Chat unarchived",
+          })
+        );
+      } else {
+        next = Array.from(new Set([...archived, key]));
+        setIsArchived(true);
+        dispatch(
+          showSnackbar({
+            severity: "info",
+            message: "Chat archived",
+          })
+        );
+      }
+      localStorage.setItem("trackon_archived_chats", JSON.stringify(next));
+      window.dispatchEvent(new CustomEvent("archived_chats_updated"));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handleClearChatClick = (e) => {
     e.stopPropagation();
     handleCloseContextMenu();
@@ -599,6 +647,13 @@ const ChatElement = ({
           <BellSlash size={18} />
           <Typography variant="body2">
             {isMuted ? "Unmute notifications" : "Mute notifications"}
+          </Typography>
+        </MenuItem>
+
+        <MenuItem onClick={handleArchiveMenuClick} sx={{ display: "flex", gap: 1.5 }}>
+          <ArchiveBox size={18} />
+          <Typography variant="body2">
+            {isArchived ? "Unarchive chat" : "Archive chat"}
           </Typography>
         </MenuItem>
 

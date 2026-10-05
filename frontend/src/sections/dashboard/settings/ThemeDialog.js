@@ -21,7 +21,7 @@ import { useDispatch } from "react-redux";
 import { showSnackbar } from "../../../redux/slices/app";
 
 const COLOR_PRESETS = [
-  { name: "default", label: "Emerald (WhatsApp)", color: "#00A884" },
+  { name: "default", label: "Emerald (Trackon)", color: "#00A884" },
   { name: "purple", label: "Purple", color: "#7635dc" },
   { name: "cyan", label: "Cyan", color: "#1CCAFF" },
   { name: "blue", label: "Blue", color: "#2065D1" },

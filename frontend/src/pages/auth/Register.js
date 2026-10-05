@@ -8,7 +8,25 @@ const RegisterPage = () => {
   return (
     <>
       <Stack spacing={2} sx={{ mb: 5, position: "relative" }}>
-        <Typography variant="h4">Get Started With Tawk</Typography>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "center",
+            marginBottom: "12px",
+          }}
+        >
+          <img
+            src="/Trackon Opposing Finger Gun Logo.png"
+            alt="Trackon Logo"
+            style={{
+              width: "100px",
+              height: "100px",
+              objectFit: "contain",
+              borderRadius: "24px",
+            }}
+          />
+        </div>
+        <Typography variant="h4">Get Started With Trackon</Typography>
         <Stack direction="row" spacing={0.5}>
           <Typography variant="body2">Already have an account?</Typography>
           <Link component={RouterLink} to="/auth/login" variant="subtitle2">
@@ -28,12 +46,12 @@ const RegisterPage = () => {
             textAlign: "center",
           }}
         >
-          {"By signing up, I agree to"}
-          <Link underline="always" color="text.primary">
-             Terms of service
+          {"By signing up, I agree to "}
+          <Link underline="always" color="text.primary" sx={{ cursor: "pointer" }}>
+            Terms of service
           </Link>
           {" and "}
-          <Link underline="always" color="text.primary">
+          <Link underline="always" color="text.primary" sx={{ cursor: "pointer" }}>
             Privacy Policy
           </Link>
           .

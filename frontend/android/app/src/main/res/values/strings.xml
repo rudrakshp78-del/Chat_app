@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Trackon</string>
+    <string name="title_activity_main">Trackon</string>
+    <string name="package_name">com.rudraksh.TrackChat</string>
+    <string name="custom_url_scheme">com.rudraksh.TrackChat</string>
+</resources>

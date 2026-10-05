@@ -73,7 +73,7 @@ const ProfileForm = () => {
 
   const defaultValues = {
     firstName: user?.firstName || "",
-    about: user?.about || "Hey there! I am using WhatsApp.",
+    about: user?.about || "hello everyone!,I am using Trackon.",
   };
 
   const methods = useForm({
@@ -324,7 +324,11 @@ const ProfileForm = () => {
                 variant="outlined"
                 startIcon={<ImageIcon size={16} />}
                 onClick={() => fileInputRef.current?.click()}
-                sx={{ borderRadius: 2, textTransform: "none", fontSize: "0.8rem" }}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontSize: "0.8rem",
+                }}
               >
                 Gallery
               </Button>
@@ -333,7 +337,11 @@ const ProfileForm = () => {
                 variant="outlined"
                 startIcon={<Camera size={16} />}
                 onClick={() => setOpenPresetDialog(true)}
-                sx={{ borderRadius: 2, textTransform: "none", fontSize: "0.8rem" }}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: "none",
+                  fontSize: "0.8rem",
+                }}
               >
                 Avatars
               </Button>
@@ -344,7 +352,11 @@ const ProfileForm = () => {
                   variant="text"
                   startIcon={<Trash size={16} />}
                   onClick={handleRemovePhoto}
-                  sx={{ borderRadius: 2, textTransform: "none", fontSize: "0.8rem" }}
+                  sx={{
+                    borderRadius: 2,
+                    textTransform: "none",
+                    fontSize: "0.8rem",
+                  }}
                 >
                   Remove
                 </Button>
@@ -383,11 +395,16 @@ const ProfileForm = () => {
             >
               <Stack direction="row" spacing={1.5} alignItems="center">
                 <Camera size={20} />
-                <Typography variant="body2">Choose from Avatar Presets</Typography>
+                <Typography variant="body2">
+                  Choose from Avatar Presets
+                </Typography>
               </Stack>
             </MenuItem>
             {avatar && (
-              <MenuItem onClick={handleRemovePhoto} sx={{ color: "error.main" }}>
+              <MenuItem
+                onClick={handleRemovePhoto}
+                sx={{ color: "error.main" }}
+              >
                 <Stack direction="row" spacing={1.5} alignItems="center">
                   <Trash size={20} />
                   <Typography variant="body2">Remove Profile Photo</Typography>
@@ -414,7 +431,7 @@ const ProfileForm = () => {
               rows={3}
               name="about"
               label="About"
-              placeholder="Hey there! I am using WhatsApp."
+              placeholder="hello everyone!,I am using Trackon."
               helperText="Write a status or short bio"
             />
           </Stack>
@@ -468,7 +485,12 @@ const ProfileForm = () => {
                 <Typography variant="body2" color="text.secondary">
                   No links added yet.
                 </Typography>
-                <Typography variant="caption" color="text.secondary" display="block" mt={0.5}>
+                <Typography
+                  variant="caption"
+                  color="text.secondary"
+                  display="block"
+                  mt={0.5}
+                >
                   Add your Instagram, GitHub, LinkedIn, portfolio or website.
                 </Typography>
                 <Button
@@ -529,7 +551,11 @@ const ProfileForm = () => {
                           {renderPlatformIcon(platform.icon, 20)}
                         </Box>
                         <Box sx={{ minWidth: 0, flexGrow: 1 }}>
-                          <Typography variant="subtitle2" noWrap fontWeight={600}>
+                          <Typography
+                            variant="subtitle2"
+                            noWrap
+                            fontWeight={600}
+                          >
                             {link.title || platform.name}
                           </Typography>
                           <Typography
@@ -633,7 +659,8 @@ const ProfileForm = () => {
                         ? theme.palette.primary.main
                         : "transparent",
                       bgcolor: isSelected
-                        ? theme.palette.primary.lighter || "rgba(0, 168, 132, 0.1)"
+                        ? theme.palette.primary.lighter ||
+                          "rgba(0, 168, 132, 0.1)"
                         : "transparent",
                       transition: "all 0.2s ease-in-out",
                       "&:hover": {
@@ -707,7 +734,11 @@ const ProfileForm = () => {
           <Stack spacing={2.5}>
             {/* Quick platform presets */}
             <Stack spacing={1}>
-              <Typography variant="caption" color="text.secondary" fontWeight={600}>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                fontWeight={600}
+              >
                 Quick Platform Presets:
               </Typography>
               <Stack direction="row" flexWrap="wrap" gap={1}>

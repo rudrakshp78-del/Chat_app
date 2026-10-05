@@ -40,7 +40,7 @@ const SecurityDialog = ({ open, handleClose }) => {
 
   const [security, setSecurity] = useState(() => {
     try {
-      const saved = localStorage.getItem("whatsapp_security_settings");
+      const saved = localStorage.getItem("Trackon_security_settings");
       return saved ? { ...DEFAULT_SECURITY, ...JSON.parse(saved) } : DEFAULT_SECURITY;
     } catch {
       return DEFAULT_SECURITY;
@@ -53,7 +53,7 @@ const SecurityDialog = ({ open, handleClose }) => {
   const handleToggle = (field) => {
     const updated = { ...security, [field]: !security[field] };
     setSecurity(updated);
-    localStorage.setItem("whatsapp_security_settings", JSON.stringify(updated));
+    localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
   };
 
   const handleSavePin = () => {
@@ -73,7 +73,7 @@ const SecurityDialog = ({ open, handleClose }) => {
       twoStepPin: pinInput,
     };
     setSecurity(updated);
-    localStorage.setItem("whatsapp_security_settings", JSON.stringify(updated));
+    localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
     setShowPinSetup(false);
     setPinInput("");
     dispatch(
@@ -91,7 +91,7 @@ const SecurityDialog = ({ open, handleClose }) => {
       twoStepPin: "",
     };
     setSecurity(updated);
-    localStorage.setItem("whatsapp_security_settings", JSON.stringify(updated));
+    localStorage.setItem("Trackon_security_settings", JSON.stringify(updated));
     dispatch(
       showSnackbar({
         severity: "info",
@@ -175,13 +175,21 @@ const SecurityDialog = ({ open, handleClose }) => {
                 <Lock size={20} weight="bold" />
               </Box>
               <Stack spacing={0.5}>
-                <Typography variant="subtitle2" fontWeight={700} color="#00A884">
+                <Typography
+                  variant="subtitle2"
+                  fontWeight={700}
+                  color="#00A884"
+                >
                   End-to-End Encrypted
                 </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ fontSize: "0.85rem" }}>
+                <Typography
+                  variant="body2"
+                  color="text.secondary"
+                  sx={{ fontSize: "0.85rem" }}
+                >
                   Your messages, voice notes, photos, and calls are secured with
-                  peer-to-peer 256-bit encryption. Neither WhatsApp nor third parties
-                  can read or listen to them.
+                  peer-to-peer 256-bit encryption. Neither Trackon nor third
+                  parties can read or listen to them.
                 </Typography>
               </Stack>
             </Stack>
@@ -198,8 +206,8 @@ const SecurityDialog = ({ open, handleClose }) => {
                 Show Security Notifications
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Get notified when your security code changes for a contact's phone
-                in an end-to-end encrypted chat.
+                Get notified when your security code changes for a contact's
+                phone in an end-to-end encrypted chat.
               </Typography>
             </Stack>
             <Switch
@@ -231,8 +239,8 @@ const SecurityDialog = ({ open, handleClose }) => {
                   />
                 </Stack>
                 <Typography variant="caption" color="text.secondary">
-                  For added security, enable a 6-digit PIN required when registering
-                  your account.
+                  For added security, enable a 6-digit PIN required when
+                  registering your account.
                 </Typography>
               </Stack>
 
@@ -271,7 +279,12 @@ const SecurityDialog = ({ open, handleClose }) => {
                       : "rgba(255,255,255,0.05)",
                 }}
               >
-                <Typography variant="caption" fontWeight={600} display="block" mb={1}>
+                <Typography
+                  variant="caption"
+                  fontWeight={600}
+                  display="block"
+                  mb={1}
+                >
                   Create a 6-Digit Security PIN:
                 </Typography>
                 <Stack direction="row" spacing={1.5} alignItems="center">
@@ -285,7 +298,10 @@ const SecurityDialog = ({ open, handleClose }) => {
                         setPinInput(e.target.value);
                       }
                     }}
-                    inputProps={{ maxLength: 6, style: { letterSpacing: 4, textAlign: "center" } }}
+                    inputProps={{
+                      maxLength: 6,
+                      style: { letterSpacing: 4, textAlign: "center" },
+                    }}
                     sx={{ width: 140 }}
                   />
                   <Button
@@ -348,7 +364,12 @@ const SecurityDialog = ({ open, handleClose }) => {
                   </Typography>
                 </Stack>
               </Stack>
-              <Chip size="small" label="This Device" color="primary" variant="outlined" />
+              <Chip
+                size="small"
+                label="This Device"
+                color="primary"
+                variant="outlined"
+              />
             </Paper>
 
             <Button

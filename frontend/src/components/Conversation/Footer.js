@@ -69,9 +69,20 @@ const Actions = [
   },
 ];
 
-const ChatInput = ({ openPicker, setOpenPicker, value, setValue, handleSendMessage }) => {
+const ChatInput = ({
+  openPicker,
+  setOpenPicker,
+  value,
+  setValue,
+  handleSendMessage,
+  onSelectImage,
+  onSelectDoc,
+  onShareContact,
+}) => {
   const [openActions, setOpenActions] = React.useState(false);
   const inputRef = React.useRef(null);
+  const imageInputRef = React.useRef(null);
+  const docInputRef = React.useRef(null);
 
   React.useEffect(() => {
     const handleFocus = () => {
@@ -85,114 +96,156 @@ const ChatInput = ({ openPicker, setOpenPicker, value, setValue, handleSendMessa
     };
   }, []);
 
+  const handleActionClick = (title) => {
+    setOpenActions(false);
+    if (title === "Photo/Video" || title === "Image") {
+      imageInputRef.current?.click();
+    } else if (title === "Document") {
+      docInputRef.current?.click();
+    } else if (title === "Sticker") {
+      setOpenPicker(true);
+    } else if (title === "Contact") {
+      if (onShareContact) onShareContact();
+    }
+  };
+
   return (
-    <StyledInput
-      inputRef={inputRef}
-      fullWidth
-      placeholder="Write a message..."
-      variant="filled"
-      value={value}
-      onChange={(e) => setValue(e.target.value)}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && !e.shiftKey) {
-          e.preventDefault();
-          handleSendMessage();
-        }
-      }}
-      InputProps={{
-        disableUnderline: true,
+    <>
+      <input
+        ref={imageInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && onSelectImage) {
+            onSelectImage(file);
+          }
+          e.target.value = "";
+        }}
+      />
+      <input
+        ref={docInputRef}
+        type="file"
+        accept=".pdf,.doc,.docx,.txt,.zip,.xls,.xlsx,.ppt,.pptx,application/*"
+        style={{ display: "none" }}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && onSelectDoc) {
+            onSelectDoc(file);
+          }
+          e.target.value = "";
+        }}
+      />
+      <StyledInput
+        inputRef={inputRef}
+        fullWidth
+        placeholder="Write a message..."
+        variant="filled"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && !e.shiftKey) {
+            e.preventDefault();
+            handleSendMessage();
+          }
+        }}
+        InputProps={{
+          disableUnderline: true,
 
-        startAdornment: (
-          <Box
-            sx={{
-              position: "relative",
-              width: 40,
-              height: 48,
-
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-
-              flexShrink: 0,
-            }}
-          >
-            {openActions && (
-              <Stack
-                sx={{
-                  position: "absolute",
-                  bottom: 40,
-                  left: 0,
-                  zIndex: 100,
-                }}
-              >
-                {Actions.map((el, index) => (
-                  <Tooltip
-                    key={el.title}
-                    placement="right"
-                    title={el.title}
-                  >
-                    <Fab
-                      size="small"
-                      sx={{
-                        position: "absolute",
-                        bottom: index * 60,
-                        left: 0,
-
-                        width: 40,
-                        height: 40,
-
-                        backgroundColor: el.color,
-
-                        "&:hover": {
-                          backgroundColor: el.color,
-                        },
-                      }}
-                    >
-                      {el.icon}
-                    </Fab>
-                  </Tooltip>
-                ))}
-              </Stack>
-            )}
-
-            <IconButton
-              onClick={() => {
-                setOpenActions((prev) => !prev);
-              }}
+          startAdornment: (
+            <Box
               sx={{
+                position: "relative",
                 width: 40,
-                height: 40,
-
-                padding: 0,
-                margin: 0,
+                height: 48,
 
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
 
-                "&:hover": {
-                  backgroundColor: "transparent",
-                },
+                flexShrink: 0,
               }}
             >
-              <LinkSimple size={24} />
-            </IconButton>
-          </Box>
-        ),
+              {openActions && (
+                <Stack
+                  sx={{
+                    position: "absolute",
+                    bottom: 40,
+                    left: 0,
+                    zIndex: 100,
+                  }}
+                >
+                  {Actions.map((el, index) => (
+                    <Tooltip
+                      key={el.title}
+                      placement="right"
+                      title={el.title}
+                    >
+                      <Fab
+                        size="small"
+                        onClick={() => handleActionClick(el.title)}
+                        sx={{
+                          position: "absolute",
+                          bottom: index * 60,
+                          left: 0,
 
-        endAdornment: (
-          <InputAdornment position="end">
-            <IconButton
-              onClick={() =>
-                setOpenPicker((prev) => !prev)
-              }
-            >
-              <Smiley />
-            </IconButton>
-          </InputAdornment>
-        ),
-      }}
-    />
+                          width: 40,
+                          height: 40,
+
+                          backgroundColor: el.color,
+
+                          "&:hover": {
+                            backgroundColor: el.color,
+                          },
+                        }}
+                      >
+                        {el.icon}
+                      </Fab>
+                    </Tooltip>
+                  ))}
+                </Stack>
+              )}
+
+              <IconButton
+                onClick={() => {
+                  setOpenActions((prev) => !prev);
+                }}
+                sx={{
+                  width: 40,
+                  height: 40,
+
+                  padding: 0,
+                  margin: 0,
+
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+
+                  "&:hover": {
+                    backgroundColor: "transparent",
+                  },
+                }}
+              >
+                <LinkSimple size={24} />
+              </IconButton>
+            </Box>
+          ),
+
+          endAdornment: (
+            <InputAdornment position="end">
+              <IconButton
+                onClick={() =>
+                  setOpenPicker((prev) => !prev)
+                }
+              >
+                <Smiley />
+              </IconButton>
+            </InputAdornment>
+          ),
+        }}
+      />
+    </>
   );
 };
 
@@ -206,7 +259,7 @@ const Footer = () => {
   const [openPicker, setOpenPicker] = React.useState(false);
   const [value, setValue] = React.useState("");
 
-  const { room_id } = useSelector((state) => state.app);
+  const { room_id, user } = useSelector((state) => state.app);
   const { conversations, current_conversation, replying_to } = useSelector(
     (state) => state.conversation.direct_chat
   );
@@ -216,19 +269,90 @@ const Footer = () => {
   const to = (currentChat?.user_id || current_conversation?.user_id)?.toString();
   const from = (user_id || window.localStorage.getItem("user_id"))?.toString();
 
+  const handleSelectImage = (file) => {
+    if (!room_id || !to) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        const maxDim = 900;
+        let { width, height } = img;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, width, height);
+        const compressedUrl = canvas.toDataURL("image/jpeg", 0.8);
+
+        socket.emit("file_message", {
+          to,
+          from,
+          text: value.trim(),
+          file: compressedUrl,
+          url: compressedUrl,
+          conversation_id: room_id,
+          type: "Media",
+        });
+        setValue("");
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleSelectDoc = (file) => {
+    if (!room_id || !to) return;
+    socket.emit("file_message", {
+      to,
+      from,
+      text: value.trim() || file.name,
+      file: file.name,
+      url: file.name,
+      conversation_id: room_id,
+      type: "Doc",
+    });
+    setValue("");
+  };
+
+  const handleShareContact = () => {
+    if (!room_id || !to) return;
+    const myName = `${user?.firstName || "User"} ${user?.lastName || ""}`.trim();
+    const myEmail = user?.email ? ` (${user.email})` : "";
+    socket.emit("text_message", {
+      to,
+      from,
+      message: `📇 Contact: ${myName}${myEmail}`,
+      conversation_id: room_id,
+      type: "Text",
+      reply: "",
+    });
+  };
+
   const handleSendMessage = () => {
-    if (!value.trim()) return;
+    const trimmed = value.trim();
+    if (!trimmed) return;
     if (!room_id || !to) {
       console.warn("Cannot send message: missing room_id or recipient", { room_id, to, from });
       return;
     }
 
+    const isUrl = /^https?:\/\/\S+$/i.test(trimmed);
+
     socket.emit("text_message", {
       to,
       from,
-      message: value.trim(),
+      message: trimmed,
       conversation_id: room_id,
-      type: replying_to ? "Reply" : "Text",
+      type: replying_to ? "Reply" : isUrl ? "Link" : "Text",
       reply: replying_to
         ? replying_to.message || (replying_to.subtype === "img" ? "Photo" : "Attachment")
         : "",
@@ -350,6 +474,9 @@ const Footer = () => {
             value={value}
             setValue={setValue}
             handleSendMessage={handleSendMessage}
+            onSelectImage={handleSelectImage}
+            onSelectDoc={handleSelectDoc}
+            onShareContact={handleShareContact}
           />
         </Box>
 
