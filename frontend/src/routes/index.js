@@ -4,6 +4,7 @@ import { Navigate, useRoutes } from "react-router-dom";
 import DashboardLayout from "../layouts/dashboard";
 import LoadingScreen from "../components/LoadingScreen";
 import MainLayout from "../layouts/main";
+import GeneralApp from "../pages/dashboard/GeneralApp";
 
 const Loadable = (Component) => (props) => (
   <Suspense fallback={<LoadingScreen />}>
@@ -30,7 +31,7 @@ export default function Router() {
       children: [
         {
           index: true,
-          element: <Navigate to="/app" replace />,
+          element: <GeneralApp />,
         },
         {
           path: "app",
@@ -59,10 +60,6 @@ export default function Router() {
     },
   ]);
 }
-
-const GeneralApp = Loadable(
-  lazy(() => import("../pages/dashboard/GeneralApp")),
-);
 
 const LoginPage = Loadable(lazy(() => import("../pages/auth/login")));
 

@@ -75,9 +75,25 @@ const slice = createSlice({
       state.friendRequests = action.payload.requests;
     },
     selectConversation(state, action) {
-      state.chat_type = "individual";
+      state.chat_type = action.payload.room_id ? "individual" : null;
       state.room_id = action.payload.room_id;
+      if (!action.payload.room_id && state.sideBar) {
+        state.sideBar.open = false;
+      }
     },
+  },
+  extraReducers: (builder) => {
+    builder.addCase("persist/REHYDRATE", (state, action) => {
+      if (action.payload?.app) {
+        state.user = action.payload.app.user || state.user;
+      }
+      // Always open the app on the main dashboard rather than a previously open chat
+      state.room_id = null;
+      state.chat_type = null;
+      if (state.sideBar) {
+        state.sideBar.open = false;
+      }
+    });
   },
 });
 
@@ -150,24 +166,61 @@ export function FetchUsers() {
 }
 export function FetchAllUsers() {
   return async (dispatch, getState) => {
-    await axios
-      .get(
-        "/user/get-all-verified-users",
+    const token = getState().auth.token;
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
 
-        {
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${getState().auth.token}`,
-          },
-        }
-      )
-      .then((response) => {
-        console.log(response);
-        dispatch(slice.actions.updateAllUsers({ users: response.data.data }));
-      })
-      .catch((err) => {
-        console.log(err);
+    try {
+      const response = await axios.get("/user/get-all-verified-users", {
+        headers,
       });
+      if (Array.isArray(response?.data?.data) && response.data.data.length > 0) {
+        dispatch(slice.actions.updateAllUsers({ users: response.data.data }));
+        return;
+      }
+    } catch (err) {
+      // Fallback to /user/get-friends + /user/get-users below
+    }
+
+    try {
+      const [friendsRes, usersRes] = await Promise.allSettled([
+        axios.get("/user/get-friends", { headers }),
+        axios.get("/user/get-users", { headers }),
+      ]);
+
+      const friendsList =
+        friendsRes.status === "fulfilled" &&
+        Array.isArray(friendsRes.value?.data?.data)
+          ? friendsRes.value.data.data
+          : [];
+      const usersList =
+        usersRes.status === "fulfilled" &&
+        Array.isArray(usersRes.value?.data?.data)
+          ? usersRes.value.data.data
+          : [];
+
+      if (friendsList.length > 0) {
+        dispatch(slice.actions.updateFriends({ friends: friendsList }));
+      }
+      if (usersList.length > 0) {
+        dispatch(slice.actions.updateUsers({ users: usersList }));
+      }
+
+      const mergedMap = new Map();
+      [...friendsList, ...usersList].forEach((u) => {
+        if (u && u._id) {
+          mergedMap.set(String(u._id), u);
+        }
+      });
+
+      dispatch(
+        slice.actions.updateAllUsers({ users: Array.from(mergedMap.values()) })
+      );
+    } catch (err) {
+      console.log(err);
+    }
   };
 }
 

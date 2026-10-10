@@ -13,8 +13,8 @@ const rootPersistConfig = {
   storage,
   keyPrefix: "redux-",
 
-  // Don't persist authentication state
-  blacklist: ["auth"],
+  // Don't persist authentication or transient call dialog state
+  blacklist: ["auth", "audioCall", "videoCall"],
 };
 
 const rootReducer = combineReducers({

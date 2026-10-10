@@ -607,7 +607,9 @@ const Footer = () => {
         alignItems="center"
         spacing={{ xs: 0.75, sm: 1.5 }}
         sx={{
-          p: { xs: 1, sm: 1.5 },
+          px: { xs: 1, sm: 1.5 },
+          pt: { xs: 0.75, sm: 1.25 },
+          pb: { xs: 1, sm: 1.25 },
           width: "100%",
           boxSizing: "border-box",
         }}
@@ -629,10 +631,16 @@ const Footer = () => {
             }}
             InputProps={{
               disableUnderline: true,
+              sx: {
+                borderRadius: 2.5,
+                pl: { xs: 0.5, sm: 1 },
+                pr: { xs: 0.5, sm: 1 },
+              },
               startAdornment: (
-                <InputAdornment position="start" sx={{ mr: 0.5 }}>
+                <InputAdornment position="start" sx={{ mr: { xs: 0.25, sm: 0.5 } }}>
                   <Tooltip title="Attach Photo, Document, Camera, Stickers">
                     <IconButton
+                      size={isMobile ? "small" : "medium"}
                       onClick={() => {
                         setOpenActions((prev) => !prev);
                         setOpenPicker(false);
@@ -640,7 +648,7 @@ const Footer = () => {
                       }}
                       color={openActions ? "primary" : "default"}
                     >
-                      <LinkSimple size={22} />
+                      <LinkSimple size={21} />
                     </IconButton>
                   </Tooltip>
                 </InputAdornment>
@@ -648,37 +656,41 @@ const Footer = () => {
               endAdornment: (
                 <InputAdornment position="end">
                   <Stack direction="row" alignItems="center" spacing={0.25}>
-                    <Tooltip title="Share & Edit Photo (Filters, Birthday, Song)">
-                      <IconButton
-                        size="small"
-                        onClick={() => handleActionTrigger("photo")}
-                      >
-                        <ImageIcon size={21} />
-                      </IconButton>
-                    </Tooltip>
+                    {!isMobile && (
+                      <Tooltip title="Share & Edit Photo (Filters, Birthday, Song)">
+                        <IconButton
+                          size="small"
+                          onClick={() => handleActionTrigger("photo")}
+                        >
+                          <ImageIcon size={21} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
 
                     <Tooltip title="Take Photo with Camera">
                       <IconButton
                         size="small"
                         onClick={() => handleActionTrigger("camera")}
                       >
-                        <Camera size={21} />
+                        <Camera size={20} />
                       </IconButton>
                     </Tooltip>
 
-                    <Tooltip title="Stickers">
-                      <IconButton
-                        size="small"
-                        color={openStickers ? "primary" : "default"}
-                        onClick={() => {
-                          setOpenStickers((prev) => !prev);
-                          setOpenPicker(false);
-                          setOpenActions(false);
-                        }}
-                      >
-                        <Sticker size={21} />
-                      </IconButton>
-                    </Tooltip>
+                    {!isMobile && (
+                      <Tooltip title="Stickers">
+                        <IconButton
+                          size="small"
+                          color={openStickers ? "primary" : "default"}
+                          onClick={() => {
+                            setOpenStickers((prev) => !prev);
+                            setOpenPicker(false);
+                            setOpenActions(false);
+                          }}
+                        >
+                          <Sticker size={21} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
 
                     <Tooltip title="Emojis">
                       <IconButton
@@ -690,7 +702,7 @@ const Footer = () => {
                           setOpenActions(false);
                         }}
                       >
-                        <Smiley size={21} />
+                        <Smiley size={20} />
                       </IconButton>
                     </Tooltip>
                   </Stack>
@@ -706,7 +718,7 @@ const Footer = () => {
             height: { xs: 44, sm: 48 },
             flexShrink: 0,
             backgroundColor: theme.palette.primary.main,
-            borderRadius: 1.5,
+            borderRadius: 2,
           }}
         >
           <Stack
@@ -714,8 +726,8 @@ const Footer = () => {
             alignItems="center"
             justifyContent="center"
           >
-            <IconButton onClick={handleSendMessage}>
-              <PaperPlaneTilt color="#fff" />
+            <IconButton onClick={handleSendMessage} sx={{ width: "100%", height: "100%" }}>
+              <PaperPlaneTilt color="#fff" size={20} weight="fill" />
             </IconButton>
           </Stack>
         </Box>

@@ -5,44 +5,84 @@ import {
   Link,
   IconButton,
   Divider,
+  Button,
 } from "@mui/material";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Search,
   SearchIconWrapper,
   StyledInputBase,
 } from "../../components/Search";
 import { SimpleBarStyle } from "../../components/Scrollbar";
-import { MagnifyingGlass, Plus } from "phosphor-react";
+import { MagnifyingGlass, Plus, Users } from "phosphor-react";
 import { useTheme } from "@mui/material/styles";
-import { ChatList } from "../../data";
+import { useDispatch } from "react-redux";
 import ChatElement from "../../components/ChatElement";
 import CreateGroup from "../../sections/dashboard/CreateGroup";
+import {
+  FetchAllUsers,
+  FetchFriends,
+  FetchUsers,
+} from "../../redux/slices/app";
+import { isFriendPinned } from "../../utils/chatSettingsHelpers";
+
+const FAKE_GROUP_NAMES = new Set([
+  "alex johnson",
+  "sarah connor",
+  "michael brown",
+  "emma watson",
+  "david miller",
+  "james wilson",
+  "olivia taylor",
+  "daniel anderson",
+]);
+
+const loadRealGroups = () => {
+  try {
+    const raw = JSON.parse(
+      localStorage.getItem("trackon_custom_groups") || "[]"
+    );
+    if (!Array.isArray(raw)) return [];
+    const filtered = raw.filter(
+      (g) => g && g.name && !FAKE_GROUP_NAMES.has(g.name.trim().toLowerCase())
+    );
+    if (filtered.length !== raw.length) {
+      localStorage.setItem("trackon_custom_groups", JSON.stringify(filtered));
+    }
+    return filtered;
+  } catch {
+    return [];
+  }
+};
 
 const Group = () => {
   const theme = useTheme();
+  const dispatch = useDispatch();
   const [openDialog, setOpenDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [customGroups, setCustomGroups] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("trackon_custom_groups") || "[]");
-    } catch {
-      return [];
-    }
-  });
+  const [, setPinTick] = useState(0);
+  const [customGroups, setCustomGroups] = useState(loadRealGroups);
 
-  React.useEffect(() => {
+  useEffect(() => {
+    // Pre-fetch real users so Create New Group modal has real members immediately
+    dispatch(FetchAllUsers());
+    dispatch(FetchFriends());
+    dispatch(FetchUsers());
+  }, [dispatch]);
+
+  useEffect(() => {
     const syncGroups = () => {
-      try {
-        setCustomGroups(
-          JSON.parse(localStorage.getItem("trackon_custom_groups") || "[]")
-        );
-      } catch {
-        setCustomGroups([]);
-      }
+      setCustomGroups(loadRealGroups());
+    };
+    const syncPins = () => {
+      setPinTick((t) => t + 1);
     };
     window.addEventListener("groups_updated", syncGroups);
-    return () => window.removeEventListener("groups_updated", syncGroups);
+    window.addEventListener("friendship_updated", syncPins);
+    return () => {
+      window.removeEventListener("groups_updated", syncGroups);
+      window.removeEventListener("friendship_updated", syncPins);
+    };
   }, []);
 
   const handleCloseDailog = () => {
@@ -50,11 +90,17 @@ const Group = () => {
   };
 
   const allGroups = React.useMemo(() => {
-    const combined = [...customGroups, ...ChatList];
-    if (!searchQuery.trim()) return combined;
+    if (!searchQuery.trim()) return customGroups;
     const q = searchQuery.trim().toLowerCase();
-    return combined.filter((el) => el?.name?.toLowerCase().includes(q));
+    return customGroups.filter((el) => el?.name?.toLowerCase().includes(q));
   }, [customGroups, searchQuery]);
+
+  const pinnedGroups = allGroups.filter(
+    (el) => Boolean(el.pinned || isFriendPinned(el.id))
+  );
+  const unpinnedGroups = allGroups.filter(
+    (el) => !el.pinned && !isFriendPinned(el.id)
+  );
 
   return (
     <>
@@ -124,25 +170,58 @@ const Group = () => {
               sx={{ flexGrow: 1, overflowY: "auto", height: "100%" }}
             >
               <SimpleBarStyle timeout={500} clickOnTrack={false}>
-                <Stack spacing={2}>
-                  <Typography variant="subtitle2" sx={{ color: "#676667" }}>
-                    Pinned
-                  </Typography>
-                  {allGroups
-                    .filter((el) => el.pinned)
-                    .map((el) => (
-                      <ChatElement key={el.id} {...el} />
-                    ))}
+                {allGroups.length === 0 ? (
+                  <Stack
+                    spacing={1.5}
+                    alignItems="center"
+                    justifyContent="center"
+                    sx={{ py: 6, px: 2, textAlign: "center" }}
+                  >
+                    <Users
+                      size={44}
+                      color={theme.palette.primary.main}
+                      style={{ opacity: 0.65 }}
+                    />
+                    <Typography variant="subtitle2" fontWeight={700}>
+                      No groups created yet
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Tap "Create New Group" above to start a group with your friends.
+                    </Typography>
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      startIcon={<Plus size={16} />}
+                      onClick={() => setOpenDialog(true)}
+                      sx={{ mt: 1, textTransform: "none", borderRadius: 2 }}
+                    >
+                      Create New Group
+                    </Button>
+                  </Stack>
+                ) : (
+                  <Stack spacing={2}>
+                    {pinnedGroups.length > 0 && (
+                      <>
+                        <Typography variant="subtitle2" sx={{ color: "#676667" }}>
+                          Pinned
+                        </Typography>
+                        {pinnedGroups.map((el) => (
+                          <ChatElement key={el.id} {...el} />
+                        ))}
+                      </>
+                    )}
 
-                  <Typography variant="subtitle2" sx={{ color: "#676667", pt: 1 }}>
-                    All Groups
-                  </Typography>
-                  {allGroups
-                    .filter((el) => !el.pinned)
-                    .map((el) => (
+                    <Typography
+                      variant="subtitle2"
+                      sx={{ color: "#676667", pt: pinnedGroups.length > 0 ? 1 : 0 }}
+                    >
+                      All Groups
+                    </Typography>
+                    {unpinnedGroups.map((el) => (
                       <ChatElement key={el.id} {...el} />
                     ))}
-                </Stack>
+                  </Stack>
+                )}
               </SimpleBarStyle>
             </Stack>
           </Stack>

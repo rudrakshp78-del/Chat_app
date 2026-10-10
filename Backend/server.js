@@ -182,27 +182,103 @@ async function startServer() {
           }
         };
 
-        // Save socket ID to user & join personal room
+        const fetchDirectConversationsForUser = async (currentUserId) => {
+          if (!currentUserId || !mongoose.Types.ObjectId.isValid(currentUserId)) {
+            return [];
+          }
+
+          const existing_conversations = await OneToOneMessage.find({
+            participants: { $all: [currentUserId] },
+          })
+            .select("-messages.file")
+            .populate(
+              "participants",
+              "firstName lastName _id email status avatar about links"
+            )
+            .lean();
+
+          // Filter out messages that were deleted for this user
+          return existing_conversations
+            .map((convObj) => {
+              const allMsgs = Array.isArray(convObj.messages)
+                ? convObj.messages.filter((msg) => {
+                    if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
+                      return !msg.deleted_for.some(
+                        (uid) => (uid?._id || uid)?.toString() === currentUserId
+                      );
+                    }
+                    return true;
+                  })
+                : [];
+
+              const lastMessage =
+                allMsgs.length > 0 ? allMsgs[allMsgs.length - 1] : null;
+              const unreadCount = allMsgs.filter(
+                (m) =>
+                  (m.to?._id || m.to)?.toString() === currentUserId &&
+                  !m.seen &&
+                  m.status !== "seen"
+              ).length;
+
+              return {
+                ...convObj,
+                last_message: lastMessage,
+                unread_count: unreadCount,
+                messages: allMsgs.slice(-30),
+              };
+            })
+            .filter((conv) => {
+              // If user deleted this chat and there are no messages left for this user, do not show in sidebar
+              const isChatDeletedForUser =
+                conv.deleted_for &&
+                Array.isArray(conv.deleted_for) &&
+                conv.deleted_for.some(
+                  (uid) => (uid?._id || uid)?.toString() === currentUserId
+                );
+              if (
+                isChatDeletedForUser &&
+                (!conv.messages || conv.messages.length === 0)
+              ) {
+                return false;
+              }
+              return true;
+            });
+        };
+
+        // Join personal room synchronously so all socket.on listeners below register immediately without awaiting DB
         if (Boolean(user_id)) {
-          socket.join(user_id.toString());
-          await User.findByIdAndUpdate(user_id, {
-            socket_id,
-            status: "Online",
-          });
-          deliverPendingMessages(user_id);
+          const uidStr = user_id.toString();
+          socket.join(uidStr);
+          if (mongoose.Types.ObjectId.isValid(uidStr)) {
+            User.findByIdAndUpdate(uidStr, {
+              socket_id,
+              status: "Online",
+            })
+              .then(() => deliverPendingMessages(uidStr))
+              .catch((err) => console.error("Initial status update error:", err));
+
+            fetchDirectConversationsForUser(uidStr)
+              .then((convs) => {
+                socket.emit("direct_conversations", convs);
+              })
+              .catch((err) =>
+                console.error("Proactive direct_conversations error:", err)
+              );
+          }
         }
 
         socket.on("user_connected", async (data) => {
           try {
             const uid = (data?.user_id || socket.handshake.query["user_id"])?.toString();
-            if (uid) {
+            if (uid && mongoose.Types.ObjectId.isValid(uid)) {
               socket.user_id = uid;
               socket.join(uid);
-              await User.findByIdAndUpdate(uid, {
+              User.findByIdAndUpdate(uid, {
                 socket_id: socket.id,
                 status: "Online",
-              });
-              deliverPendingMessages(uid);
+              })
+                .then(() => deliverPendingMessages(uid))
+                .catch((e) => console.error("user_connected update error:", e));
               console.log(`User connected and joined room: ${uid}`);
             }
           } catch (e) {
@@ -217,11 +293,6 @@ async function startServer() {
         socket.on("friend_request", async (data) => {
           try {
             console.log("Friend request received:", data);
-
-            // data = {
-            //   to: recipient user ID,
-            //   from: sender user ID
-            // }
 
             const to = await User.findById(data.to).select("socket_id");
 
@@ -355,13 +426,22 @@ async function startServer() {
           try {
             console.log(`User disconnected: ${socket.id}`);
 
-            if (user_id) {
-              await User.findByIdAndUpdate(user_id, {
-                status: "Offline",
-                $unset: {
-                  socket_id: 1,
-                },
-              });
+            const uid = (socket.user_id || user_id)?.toString();
+            if (uid && mongoose.Types.ObjectId.isValid(uid)) {
+              const remainingSockets = await io.in(uid).fetchSockets();
+              if (remainingSockets && remainingSockets.length > 0) {
+                await User.findByIdAndUpdate(uid, {
+                  status: "Online",
+                  socket_id: remainingSockets[0].id,
+                });
+              } else {
+                await User.findByIdAndUpdate(uid, {
+                  status: "Offline",
+                  $unset: {
+                    socket_id: 1,
+                  },
+                });
+              }
             }
           } catch (err) {
             console.error("disconnect error:", err);
@@ -372,49 +452,16 @@ async function startServer() {
         // END CONNECTION & CHAT HANDLERS
         // ========================================
 
-        socket.on("get_direct_conversations", async ({ user_id: req_user_id }, callback) => {
+        socket.on("get_direct_conversations", async ({ user_id: req_user_id } = {}, callback) => {
           try {
-            const currentUserId = (socket.user_id || user_id || req_user_id)?.toString();
+            const currentUserId = (req_user_id || socket.user_id || user_id)?.toString();
             if (!currentUserId) {
               if (typeof callback === "function") callback([]);
               return;
             }
 
-            const existing_conversations = await OneToOneMessage.find({
-              participants: { $all: [currentUserId] },
-            }).populate("participants", "firstName lastName _id email status avatar about links");
-
-            console.log("Direct conversations found:", existing_conversations.length);
-
-            // Filter out messages that were deleted for this user
-            const filteredConversations = existing_conversations
-              .map((conv) => {
-                const convObj = conv.toObject ? conv.toObject() : JSON.parse(JSON.stringify(conv));
-                if (convObj.messages && Array.isArray(convObj.messages)) {
-                  convObj.messages = convObj.messages.filter((msg) => {
-                    if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
-                      return !msg.deleted_for.some(
-                        (uid) => (uid?._id || uid)?.toString() === currentUserId
-                      );
-                    }
-                    return true;
-                  });
-                }
-                return convObj;
-              })
-              .filter((conv) => {
-                // If user deleted this chat and there are no messages left for this user, do not show in sidebar
-                const isChatDeletedForUser =
-                  conv.deleted_for &&
-                  Array.isArray(conv.deleted_for) &&
-                  conv.deleted_for.some(
-                    (uid) => (uid?._id || uid)?.toString() === currentUserId
-                  );
-                if (isChatDeletedForUser && (!conv.messages || conv.messages.length === 0)) {
-                  return false;
-                }
-                return true;
-              });
+            const filteredConversations = await fetchDirectConversationsForUser(currentUserId);
+            console.log("Direct conversations found:", filteredConversations.length);
 
             if (typeof callback === "function") {
               callback(filteredConversations);
@@ -477,6 +524,7 @@ async function startServer() {
                   return true;
                 });
               }
+              obj.initiated_by = from.toString();
               return obj;
             };
 
@@ -1266,29 +1314,108 @@ async function startServer() {
         });
 
         // ========================================
-        // CALL EVENT HANDLERS
+        // CALL & WEBRTC EVENT HANDLERS
         // ========================================
+
+        const emitToUser = async (targetUserId, eventName, payload, excludeSocketId = null) => {
+          if (!targetUserId) return false;
+          const uidStr = (targetUserId?._id || targetUserId).toString();
+          if (!mongoose.Types.ObjectId.isValid(uidStr)) return false;
+
+          const targetUser = await User.findById(uidStr).select("socket_id status");
+          const roomSockets = await io.in(uidStr).fetchSockets();
+          const hasActiveSocket =
+            (roomSockets && roomSockets.length > 0) || Boolean(targetUser?.socket_id);
+
+          if (!hasActiveSocket) return false;
+
+          let emitter = io.to(uidStr);
+          if (targetUser?.socket_id) {
+            emitter = emitter.to(targetUser.socket_id);
+          }
+          if (excludeSocketId) {
+            emitter = emitter.except(excludeSocketId);
+          }
+          emitter.emit(eventName, payload);
+          return true;
+        };
+
+        // Join dedicated WebRTC call signaling room
+        socket.on("webrtc_join_room", ({ roomID, userID }) => {
+          try {
+            if (roomID) {
+              socket.join(`call_${roomID}`);
+            }
+            if (userID) {
+              socket.join(userID.toString());
+            }
+          } catch (err) {
+            console.error("webrtc_join_room error:", err);
+          }
+        });
+
+        // Relay WebRTC SDP Offer / Answer / ICE Candidate / Media State
+        socket.on("webrtc_signal", async (data) => {
+          try {
+            const { roomID, to } = data || {};
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("webrtc_signal", data);
+            }
+            if (to) {
+              await emitToUser(to, "webrtc_signal", data, socket.id);
+            }
+          } catch (err) {
+            console.error("webrtc_signal error:", err);
+          }
+        });
+
+        // Relay explicit call ended event
+        socket.on("webrtc_call_ended", async (data) => {
+          try {
+            const { roomID, to } = data || {};
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("webrtc_call_ended", data);
+            }
+            if (to) {
+              await emitToUser(to, "webrtc_call_ended", data, socket.id);
+            }
+          } catch (err) {
+            console.error("webrtc_call_ended error:", err);
+          }
+        });
 
         // Start Audio Call
         socket.on("start_audio_call", async (data) => {
           try {
             console.log("start_audio_call:", data);
-            const { to, from, roomID } = data;
+            const { to, from, roomID } = data || {};
+            if (!to || !from) return;
+
+            if (roomID) {
+              socket.join(`call_${roomID}`);
+            }
+
             const to_user = await User.findById(to);
             const from_user = await User.findById(from);
 
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("audio_call_notification", {
+            const delivered = await emitToUser(
+              to,
+              "audio_call_notification",
+              {
+                call_id: roomID,
                 roomID,
-                streamID: from,
-                userID: to,
-                userName: `${to_user.firstName} ${to_user.lastName}`.trim(),
+                streamID: from.toString(),
+                userID: to.toString(),
+                userName: `${to_user?.firstName || ""} ${to_user?.lastName || ""}`.trim(),
                 from_user,
                 to_user,
-              });
-            } else {
+              },
+              socket.id
+            );
+
+            if (!delivered) {
               // recipient is offline
-              socket.emit("audio_call_missed", { to, from, roomID });
+              socket.emit("audio_call_missed", { to, from, roomID, call_id: roomID });
             }
           } catch (err) {
             console.error("start_audio_call error:", err);
@@ -1299,78 +1426,98 @@ async function startServer() {
         socket.on("start_video_call", async (data) => {
           try {
             console.log("start_video_call:", data);
-            const { to, from, roomID } = data;
+            const { to, from, roomID } = data || {};
+            if (!to || !from) return;
+
+            if (roomID) {
+              socket.join(`call_${roomID}`);
+            }
+
             const to_user = await User.findById(to);
             const from_user = await User.findById(from);
 
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("video_call_notification", {
+            const delivered = await emitToUser(
+              to,
+              "video_call_notification",
+              {
+                call_id: roomID,
                 roomID,
-                streamID: from,
-                userID: to,
-                userName: `${to_user.firstName} ${to_user.lastName}`.trim(),
+                streamID: from.toString(),
+                userID: to.toString(),
+                userName: `${to_user?.firstName || ""} ${to_user?.lastName || ""}`.trim(),
                 from_user,
                 to_user,
-              });
-            } else {
+              },
+              socket.id
+            );
+
+            if (!delivered) {
               // recipient is offline
-              socket.emit("video_call_missed", { to, from, roomID });
+              socket.emit("video_call_missed", { to, from, roomID, call_id: roomID });
             }
           } catch (err) {
             console.error("start_video_call error:", err);
           }
         });
 
-        // Audio Call Accepted
+        // Audio Call Accepted (also forwards embedded webrtc_signal for backward compatibility)
         socket.on("audio_call_accepted", async (data) => {
           try {
-            console.log("audio_call_accepted:", data);
-            if (data?.call_id || data?.roomID) {
-              await AudioCall.findByIdAndUpdate(data.call_id || data.roomID, {
+            const roomID = data?.call_id || data?.roomID;
+            if (!data?.webrtc_signal && roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              console.log("audio_call_accepted:", roomID);
+              await AudioCall.findByIdAndUpdate(roomID, {
                 verdict: "Accepted",
                 status: "Ongoing",
               });
             }
-            const callerId = data?.streamID || data?.from_user?._id;
-            const from_user = await User.findById(callerId);
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("audio_call_accepted", data);
+            const targetId = data?.streamID || data?.to || data?.from_user?._id;
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("audio_call_accepted", data);
+            }
+            if (targetId) {
+              await emitToUser(targetId, "audio_call_accepted", data, socket.id);
             }
           } catch (err) {
             console.error("audio_call_accepted error:", err);
           }
         });
 
-        // Video Call Accepted
+        // Video Call Accepted (also forwards embedded webrtc_signal for backward compatibility)
         socket.on("video_call_accepted", async (data) => {
           try {
-            console.log("video_call_accepted:", data);
-            if (data?.call_id || data?.roomID) {
-              await VideoCall.findByIdAndUpdate(data.call_id || data.roomID, {
+            const roomID = data?.call_id || data?.roomID;
+            if (!data?.webrtc_signal && roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              console.log("video_call_accepted:", roomID);
+              await VideoCall.findByIdAndUpdate(roomID, {
                 verdict: "Accepted",
                 status: "Ongoing",
               });
             }
-            const callerId = data?.streamID || data?.from_user?._id;
-            const from_user = await User.findById(callerId);
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("video_call_accepted", data);
+            const targetId = data?.streamID || data?.to || data?.from_user?._id;
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("video_call_accepted", data);
+            }
+            if (targetId) {
+              await emitToUser(targetId, "video_call_accepted", data, socket.id);
             }
           } catch (err) {
             console.error("video_call_accepted error:", err);
           }
         });
 
-        // Audio Call Denied
+        // Audio Call Denied / Ended
         socket.on("audio_call_denied", async (data) => {
           try {
-            console.log("audio_call_denied:", data);
+            console.log("audio_call_denied:", data?.roomID || data?.call_id);
+            const roomID = data?.call_id || data?.roomID;
             let call = null;
-            if (data?.call_id || data?.roomID) {
+            if (roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              const existing = await AudioCall.findById(roomID);
               call = await AudioCall.findByIdAndUpdate(
-                data.call_id || data.roomID,
+                roomID,
                 {
-                  verdict: "Denied",
+                  verdict: existing?.verdict === "Accepted" ? "Accepted" : "Denied",
                   status: "Ended",
                   endedAt: Date.now(),
                 },
@@ -1378,20 +1525,18 @@ async function startServer() {
               );
             }
 
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("audio_call_denied", data);
+            }
+
             if (call && call.participants) {
               for (const p of call.participants) {
-                const u = await User.findById(p);
-                if (u?.socket_id && u.socket_id !== socket.id) {
-                  io.to(u.socket_id).emit("audio_call_denied", data);
-                }
+                await emitToUser(p, "audio_call_denied", data, socket.id);
               }
             } else {
-              const callerId = data?.streamID || data?.from_user?._id || data?.to || data?.from;
+              const callerId = data?.streamID || data?.to || data?.from_user?._id || data?.from;
               if (callerId) {
-                const targetUser = await User.findById(callerId);
-                if (targetUser?.socket_id && targetUser.socket_id !== socket.id) {
-                  io.to(targetUser.socket_id).emit("audio_call_denied", data);
-                }
+                await emitToUser(callerId, "audio_call_denied", data, socket.id);
               }
             }
           } catch (err) {
@@ -1399,16 +1544,18 @@ async function startServer() {
           }
         });
 
-        // Video Call Denied
+        // Video Call Denied / Ended
         socket.on("video_call_denied", async (data) => {
           try {
-            console.log("video_call_denied:", data);
+            console.log("video_call_denied:", data?.roomID || data?.call_id);
+            const roomID = data?.call_id || data?.roomID;
             let call = null;
-            if (data?.call_id || data?.roomID) {
+            if (roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              const existing = await VideoCall.findById(roomID);
               call = await VideoCall.findByIdAndUpdate(
-                data.call_id || data.roomID,
+                roomID,
                 {
-                  verdict: "Denied",
+                  verdict: existing?.verdict === "Accepted" ? "Accepted" : "Denied",
                   status: "Ended",
                   endedAt: Date.now(),
                 },
@@ -1416,20 +1563,18 @@ async function startServer() {
               );
             }
 
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("video_call_denied", data);
+            }
+
             if (call && call.participants) {
               for (const p of call.participants) {
-                const u = await User.findById(p);
-                if (u?.socket_id && u.socket_id !== socket.id) {
-                  io.to(u.socket_id).emit("video_call_denied", data);
-                }
+                await emitToUser(p, "video_call_denied", data, socket.id);
               }
             } else {
-              const callerId = data?.streamID || data?.from_user?._id || data?.to || data?.from;
+              const callerId = data?.streamID || data?.to || data?.from_user?._id || data?.from;
               if (callerId) {
-                const targetUser = await User.findById(callerId);
-                if (targetUser?.socket_id && targetUser.socket_id !== socket.id) {
-                  io.to(targetUser.socket_id).emit("video_call_denied", data);
-                }
+                await emitToUser(callerId, "video_call_denied", data, socket.id);
               }
             }
           } catch (err) {
@@ -1441,12 +1586,15 @@ async function startServer() {
         socket.on("audio_call_not_picked", async (data) => {
           try {
             console.log("audio_call_not_picked:", data);
-            const to_user = await User.findById(data.to);
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("audio_call_missed", data);
+            const roomID = data?.call_id || data?.roomID;
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("audio_call_missed", data);
             }
-            if (data?.call_id || data?.roomID) {
-              await AudioCall.findByIdAndUpdate(data.call_id || data.roomID, {
+            if (data?.to) {
+              await emitToUser(data.to, "audio_call_missed", data, socket.id);
+            }
+            if (roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              await AudioCall.findByIdAndUpdate(roomID, {
                 verdict: "Missed",
                 status: "Ended",
                 endedAt: Date.now(),
@@ -1461,12 +1609,15 @@ async function startServer() {
         socket.on("video_call_not_picked", async (data) => {
           try {
             console.log("video_call_not_picked:", data);
-            const to_user = await User.findById(data.to);
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("video_call_missed", data);
+            const roomID = data?.call_id || data?.roomID;
+            if (roomID) {
+              socket.to(`call_${roomID}`).emit("video_call_missed", data);
             }
-            if (data?.call_id || data?.roomID) {
-              await VideoCall.findByIdAndUpdate(data.call_id || data.roomID, {
+            if (data?.to) {
+              await emitToUser(data.to, "video_call_missed", data, socket.id);
+            }
+            if (roomID && mongoose.Types.ObjectId.isValid(roomID)) {
+              await VideoCall.findByIdAndUpdate(roomID, {
                 verdict: "Missed",
                 status: "Ended",
                 endedAt: Date.now(),
@@ -1480,13 +1631,21 @@ async function startServer() {
         // User Busy
         socket.on("user_is_busy_audio_call", async (data) => {
           try {
-            const callerId = data?.streamID || data?.from_user?._id;
-            const from_user = await User.findById(callerId);
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("audio_call_denied", {
-                ...data,
-                busy: true,
-              });
+            const callDetails = data?.call || data;
+            const callerId =
+              callDetails?.streamID ||
+              callDetails?.from_user?._id ||
+              callDetails?.from;
+            if (callerId) {
+              await emitToUser(
+                callerId,
+                "audio_call_denied",
+                {
+                  ...callDetails,
+                  busy: true,
+                },
+                socket.id
+              );
             }
           } catch (err) {
             console.error("user_is_busy_audio_call error:", err);
@@ -1495,13 +1654,21 @@ async function startServer() {
 
         socket.on("user_is_busy_video_call", async (data) => {
           try {
-            const callerId = data?.streamID || data?.from_user?._id;
-            const from_user = await User.findById(callerId);
-            if (from_user?.socket_id) {
-              io.to(from_user.socket_id).emit("video_call_denied", {
-                ...data,
-                busy: true,
-              });
+            const callDetails = data?.call || data;
+            const callerId =
+              callDetails?.streamID ||
+              callDetails?.from_user?._id ||
+              callDetails?.from;
+            if (callerId) {
+              await emitToUser(
+                callerId,
+                "video_call_denied",
+                {
+                  ...callDetails,
+                  busy: true,
+                },
+                socket.id
+              );
             }
           } catch (err) {
             console.error("user_is_busy_video_call error:", err);

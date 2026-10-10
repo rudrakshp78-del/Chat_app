@@ -1,29 +1,83 @@
-import { Box, Divider, IconButton, Stack, Typography, Link} from '@mui/material';
-import React, { useState } from 'react'
-import { Search, SearchIconWrapper, StyledInputBase } from '../../components/Search';
-import { MagnifyingGlass, Plus } from 'phosphor-react';
-import { useTheme } from '@mui/material/styles';
-import { SimpleBarStyle } from '../../components/Scrollbar';
+import {
+  Box,
+  Divider,
+  IconButton,
+  Stack,
+  Typography,
+  Link,
+} from "@mui/material";
+import React, { useEffect, useState, useMemo } from "react";
+import {
+  Search,
+  SearchIconWrapper,
+  StyledInputBase,
+} from "../../components/Search";
+import { MagnifyingGlass, Plus } from "phosphor-react";
+import { useTheme } from "@mui/material/styles";
+import { useDispatch, useSelector } from "react-redux";
+import { SimpleBarStyle } from "../../components/Scrollbar";
 import { CallLogElement } from "../../components/CallElement";
-import { CallLogs } from '../../data';
+import { CallLogs } from "../../data";
 import StartCall from "../../sections/dashboard/StartCall";
-
-
-
-
-
-
+import { FetchCallLogs } from "../../redux/slices/app";
 
 const Call = () => {
   const theme = useTheme();
+  const dispatch = useDispatch();
   const [openDialog, setOpenDialog] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const { call_logs = [], user } = useSelector((state) => state.app);
+  const { user_id } = useSelector((state) => state.auth);
+  const myUserId = (
+    user_id ||
+    user?._id ||
+    (typeof window !== "undefined" ? window.localStorage.getItem("user_id") : "") ||
+    ""
+  ).toString();
+
+  useEffect(() => {
+    dispatch(FetchCallLogs());
+  }, [dispatch]);
 
   const handleCloseDailog = () => {
     setOpenDialog(false);
   };
 
-  const filteredLogs = CallLogs.filter((el) =>
+  const formattedRealLogs = useMemo(() => {
+    if (!Array.isArray(call_logs) || call_logs.length === 0) return [];
+    return call_logs.map((log, idx) => {
+      const fromId = (log?.from?._id || log?.from || "").toString();
+      const incoming = fromId && fromId !== myUserId;
+      const otherPerson = incoming ? log?.from : log?.to;
+      const otherId = (otherPerson?._id || otherPerson || "").toString();
+      const name = otherPerson
+        ? `${otherPerson.firstName || ""} ${otherPerson.lastName || ""}`.trim() ||
+          "User"
+        : "User";
+      const dateStr = log?.startedAt
+        ? new Date(log.startedAt).toLocaleString([], {
+            month: "short",
+            day: "numeric",
+            hour: "2-digit",
+            minute: "2-digit",
+          })
+        : "Recently";
+
+      return {
+        key: log?._id || idx,
+        id: otherId,
+        name,
+        img: otherPerson?.avatar,
+        incoming,
+        missed: log?.verdict !== "Accepted",
+        online: otherPerson?.status === "Online",
+        timestamp: dateStr,
+      };
+    });
+  }, [call_logs, myUserId]);
+
+  const filteredLogs = formattedRealLogs.filter((el) =>
     !searchQuery.trim()
       ? true
       : el?.name?.toLowerCase().includes(searchQuery.trim().toLowerCase())
@@ -102,8 +156,12 @@ const Call = () => {
                     All Calls
                   </Typography>
                   {/* Call Logs */}
-                  {filteredLogs.map((el) => (
-                    <CallLogElement key={el.id} {...el} />
+                  {filteredLogs.map((el, idx) => (
+                    <CallLogElement
+                      key={el.key || el.id || idx}
+                      {...el}
+                      onStartNewCall={() => setOpenDialog(true)}
+                    />
                   ))}
                 </Stack>
               </SimpleBarStyle>

@@ -15,7 +15,11 @@ import {
 import { MagnifyingGlass } from "phosphor-react";
 import { CallElement } from "../../components/CallElement";
 import { useDispatch, useSelector } from "react-redux";
-import { FetchAllUsers } from "../../redux/slices/app";
+import {
+  FetchAllUsers,
+  FetchFriends,
+  FetchUsers,
+} from "../../redux/slices/app";
 import getAvatarUrl from "../../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
@@ -23,26 +27,60 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 });
 
 const StartCall = ({ open, handleClose }) => {
-  const { all_users = [] } = useSelector((state) => state.app);
+  const {
+    all_users = [],
+    friends = [],
+    users = [],
+  } = useSelector((state) => state.app);
+  const { conversations = [] } = useSelector(
+    (state) => state.conversation.direct_chat
+  );
   const [searchQuery, setSearchQuery] = useState("");
   const dispatch = useDispatch();
 
   useEffect(() => {
     dispatch(FetchAllUsers());
+    dispatch(FetchFriends());
+    dispatch(FetchUsers());
   }, [dispatch]);
 
-  const list = all_users
-    .map((el) => ({
-      id: el?._id,
-      name: `${el?.firstName || ""} ${el?.lastName || ""}`.trim() || "User",
-      img: getAvatarUrl(el?.avatar, el?.firstName),
-      online: el?.status === "Online",
-    }))
-    .filter((item) =>
+  const list = React.useMemo(() => {
+    const contactMap = new Map();
+
+    // 1. Add from direct conversations
+    (conversations || []).forEach((c) => {
+      const uid = c?.user_id || c?.id;
+      if (uid && c?.name) {
+        contactMap.set(String(uid), {
+          id: uid,
+          name: c.name,
+          img: getAvatarUrl(c.img, c.name),
+          online: Boolean(c.online),
+        });
+      }
+    });
+
+    // 2. Add from friends, all_users, and users
+    [...(friends || []), ...(all_users || []), ...(users || [])].forEach((el) => {
+      if (!el?._id) return;
+      const uid = String(el._id);
+      const name = `${el?.firstName || ""} ${el?.lastName || ""}`.trim() || "User";
+      if (!contactMap.has(uid)) {
+        contactMap.set(uid, {
+          id: el._id,
+          name,
+          img: getAvatarUrl(el?.avatar, el?.firstName),
+          online: el?.status === "Online",
+        });
+      }
+    });
+
+    return Array.from(contactMap.values()).filter((item) =>
       !searchQuery.trim()
         ? true
         : item.name.toLowerCase().includes(searchQuery.trim().toLowerCase())
     );
+  }, [all_users, friends, users, conversations, searchQuery]);
 
   return (
     <Dialog
@@ -53,7 +91,13 @@ const StartCall = ({ open, handleClose }) => {
       keepMounted
       onClose={handleClose}
       aria-describedby="alert-dialog-slide-description"
-      sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
+      sx={{
+        "& .MuiDialog-paper": {
+          m: { xs: 1.5, sm: 3 },
+          width: "100%",
+          maxWidth: "450px",
+        },
+      }}
     >
       <DialogTitle>{"Start New Call"}</DialogTitle>
       <Stack px={3} pb={1} sx={{ width: "100%" }}>
@@ -74,7 +118,11 @@ const StartCall = ({ open, handleClose }) => {
           <Stack spacing={2.4}>
             {list.length > 0 ? (
               list.map((el, idx) => (
-                <CallElement key={el.id || idx} {...el} handleClose={handleClose} />
+                <CallElement
+                  key={el.id || idx}
+                  {...el}
+                  handleClose={handleClose}
+                />
               ))
             ) : (
               <Typography

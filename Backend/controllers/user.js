@@ -303,11 +303,11 @@ exports.getCallLogs = async (req, res, next) => {
 
     const audio_calls = await AudioCall.find({
       participants: { $all: [user_id] },
-    }).populate("from to", "firstName lastName avatar");
+    }).populate("from to", "firstName lastName avatar status");
 
     const video_calls = await VideoCall.find({
       participants: { $all: [user_id] },
-    }).populate("from to", "firstName lastName avatar");
+    }).populate("from to", "firstName lastName avatar status");
 
     const call_logs = [...audio_calls, ...video_calls].sort(
       (a, b) => new Date(b.startedAt) - new Date(a.startedAt)

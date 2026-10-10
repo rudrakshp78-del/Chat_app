@@ -84,6 +84,8 @@ const oneToOneMessageSchema = new mongoose.Schema({
   ],
 });
 
+oneToOneMessageSchema.index({ participants: 1 });
+
 const OneToOneMessage = mongoose.model(
   "OneToOneMessage",
   oneToOneMessageSchema

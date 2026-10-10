@@ -99,6 +99,24 @@ const Message = ({ menu, starredOnly = false }) => {
     }
   }, [current_messages, query, starredOnly]);
 
+  useEffect(() => {
+    if (query || starredOnly) return undefined;
+    const handleViewportResize = () => {
+      messageEndRef.current?.scrollIntoView({ behavior: "auto" });
+    };
+    const vv = typeof window !== "undefined" ? window.visualViewport : null;
+    if (vv) {
+      vv.addEventListener("resize", handleViewportResize);
+    }
+    window.addEventListener("resize", handleViewportResize);
+    return () => {
+      if (vv) {
+        vv.removeEventListener("resize", handleViewportResize);
+      }
+      window.removeEventListener("resize", handleViewportResize);
+    };
+  }, [query, starredOnly]);
+
   const retentionInfo = getRetentionInfo(retentionMode);
 
   return (
@@ -106,13 +124,14 @@ const Message = ({ menu, starredOnly = false }) => {
       sx={{
         width: "100%",
         boxSizing: "border-box",
-        p: { xs: 1.5, sm: 2.5 },
+        px: { xs: 1.25, sm: 2.5 },
+        py: { xs: 1, sm: 2 },
       }}
     >
-      <Stack spacing={1.5}>
+      <Stack spacing={0.75}>
         {/* Retention Mode Notice Pill at top of conversation */}
         {!starredOnly && activeConvId && (
-          <Box sx={{ display: "flex", justifyContent: "center", mb: 0.5 }}>
+          <Box sx={{ display: "flex", justifyContent: "center", mb: 0.25 }}>
             <Box
               onClick={() => setOpenRetentionDialog(true)}
               sx={{

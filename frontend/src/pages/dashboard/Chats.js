@@ -85,51 +85,77 @@ const Chats = () => {
     dispatch(FetchAllStatuses());
   }, [dispatch]);
 
+  const authUserId = useSelector((state) => state.auth.user_id);
+
   useEffect(() => {
-    const user_id = window.localStorage.getItem("user_id");
+    const user_id = authUserId || window.localStorage.getItem("user_id");
 
     if (!user_id) {
-      console.log("❌ No user_id found");
       return;
     }
 
-    console.log("User ID:", user_id);
+    let received = false;
+    const retryTimers = [];
+
+    const clearRetries = () => {
+      while (retryTimers.length > 0) {
+        clearTimeout(retryTimers.pop());
+      }
+    };
+
+    const handleConversationsData = (data) => {
+      if (!Array.isArray(data)) return;
+      received = true;
+      clearRetries();
+      dispatch(
+        FetchDirectConversations({
+          conversations: data,
+        })
+      );
+    };
+
+    const requestConversations = () => {
+      if (!socket.connected) return;
+      socket.emit("get_direct_conversations", { user_id }, (data) => {
+        handleConversationsData(data);
+      });
+    };
+
+    const scheduleFetchWithRetry = () => {
+      received = false;
+      clearRetries();
+      requestConversations();
+      // Fast automatic retries in case server was still initializing connection listeners
+      [350, 900, 2200].forEach((delay) => {
+        const timer = setTimeout(() => {
+          if (!received && socket.connected) {
+            requestConversations();
+          }
+        }, delay);
+        retryTimers.push(timer);
+      });
+    };
 
     // Set user_id for Socket.IO connection
     socket.io.opts.query = {
       user_id,
     };
 
-    const handleConnect = () => {
-      console.log("✅ SOCKET CONNECTED:", socket.id);
-
-      socket.emit(
-        "get_direct_conversations",
-        { user_id },
-        (data) => {
-          console.log("📩 DIRECT CONVERSATIONS:", data);
-
-          dispatch(
-            FetchDirectConversations({
-              conversations: data,
-            })
-          );
-        }
-      );
-    };
-
-    socket.on("connect", handleConnect);
+    socket.on("connect", scheduleFetchWithRetry);
+    socket.on("direct_conversations", handleConversationsData);
 
     if (!socket.connected) {
       socket.connect();
     } else {
-      handleConnect();
+      scheduleFetchWithRetry();
     }
 
     return () => {
-      socket.off("connect", handleConnect);
+      clearRetries();
+      socket.off("connect", scheduleFetchWithRetry);
+      socket.off("direct_conversations", handleConversationsData);
     };
-  }, [dispatch]);
+  }, [dispatch, authUserId]);
 
   const handleCloseDialog = () => {
     setOpenDialog(false);

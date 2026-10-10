@@ -43,6 +43,8 @@ import {
   ToggleSidebar,
   UpdateSidebarType,
 } from "../../redux/slices/app";
+import { StartAudioCall } from "../../redux/slices/audioCall";
+import { StartVideoCall } from "../../redux/slices/videoCall";
 import { DeleteDirectConversation } from "../../redux/slices/Conversation";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
@@ -269,14 +271,28 @@ const Contact = () => {
             justifyContent={"space-evenly"}
           >
             <Stack alignItems={"center"} spacing={1}>
-              <IconButton>
+              <IconButton
+                color="primary"
+                onClick={() => {
+                  const targetId =
+                    current_conversation?.user_id || activeConvId;
+                  if (targetId) dispatch(StartAudioCall(targetId));
+                }}
+              >
                 <Phone />
               </IconButton>
 
               <Typography variant="overline">Voice</Typography>
             </Stack>
             <Stack alignItems={"center"} spacing={1}>
-              <IconButton>
+              <IconButton
+                color="primary"
+                onClick={() => {
+                  const targetId =
+                    current_conversation?.user_id || activeConvId;
+                  if (targetId) dispatch(StartVideoCall(targetId));
+                }}
+              >
                 <VideoCamera />
               </IconButton>
               <Typography variant="overline">Video</Typography>

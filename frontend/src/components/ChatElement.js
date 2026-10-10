@@ -21,6 +21,7 @@ import {
 } from "@mui/material";
 import { styled, useTheme, alpha } from "@mui/material/styles";
 import { useDispatch, useSelector } from "react-redux";
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   ArchiveBox,
   ArrowBendUpLeft,
@@ -37,6 +38,7 @@ import {
   User,
 } from "phosphor-react";
 import {
+  CloseSidebar,
   SelectConversation,
   ToggleSidebar,
   UpdateSidebarType,
@@ -208,9 +210,14 @@ const ChatElement = ({
     return () => clearHoldTimer();
   }, []);
 
+  const navigate = useNavigate();
+  const location = useLocation();
   const displayName = nickname || name;
 
   const selectThisChat = () => {
+    if (sideBar?.open) {
+      dispatch(CloseSidebar());
+    }
     dispatch(SelectConversation({ room_id: id }));
     dispatch(
       SetCurrentConversation({
@@ -225,6 +232,9 @@ const ChatElement = ({
         about,
       })
     );
+    if (location.pathname.toLowerCase() !== "/app") {
+      navigate("/app");
+    }
   };
 
   const triggerReplyToChat = () => {
@@ -311,6 +321,8 @@ const ChatElement = ({
     event.preventDefault();
     event.stopPropagation();
     clearHoldTimer();
+    gestureRef.current.longPressed = true;
+    gestureRef.current.active = false;
     setContextMenu(
       contextMenu === null
         ? { mouseX: event.clientX + 2, mouseY: event.clientY - 6 }
@@ -500,6 +512,26 @@ const ChatElement = ({
       conversation_id: id,
       user_id: current_user_id,
     });
+
+    try {
+      const existingGroups = JSON.parse(
+        localStorage.getItem("trackon_custom_groups") || "[]"
+      );
+      if (Array.isArray(existingGroups)) {
+        const nextGroups = existingGroups.filter(
+          (g) => String(g?.id) !== String(id)
+        );
+        if (nextGroups.length !== existingGroups.length) {
+          localStorage.setItem(
+            "trackon_custom_groups",
+            JSON.stringify(nextGroups)
+          );
+          window.dispatchEvent(new CustomEvent("groups_updated"));
+        }
+      }
+    } catch (err) {
+      console.error(err);
+    }
 
     dispatch(DeleteDirectConversation({ conversation_id: id }));
     if (selectedChatId === id.toString()) {

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { Box } from "@mui/material";
-import { Navigate, Outlet, useLocation } from "react-router-dom";
+import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import useResponsive from "../../hooks/useResponsive";
@@ -8,6 +8,7 @@ import SideBar from "./sidebar";
 import BottomNav from "./BottomNav";
 
 import {
+  CloseSidebar,
   FetchUserProfile,
   SelectConversation,
   showSnackbar,
@@ -16,6 +17,7 @@ import {
 import { socket, connectSocket } from "../../socket";
 
 import {
+  FetchDirectConversations,
   UpdateDirectConversation,
   AddDirectConversation,
   AddDirectMessage,
@@ -53,6 +55,7 @@ import { isConversationMuted } from "../../utils/muteHelpers";
 const DashboardLayout = () => {
   const isDesktop = useResponsive("up", "md");
   const location = useLocation();
+  const navigate = useNavigate();
 
   const dispatch = useDispatch();
 
@@ -74,12 +77,65 @@ const DashboardLayout = () => {
     (state) => state.conversation.direct_chat,
   );
 
-  const { room_id } = useSelector((state) => state.app);
+  const { room_id, sideBar } = useSelector((state) => state.app);
 
   const room_id_ref = useRef(room_id);
   useEffect(() => {
     room_id_ref.current = room_id;
   }, [room_id]);
+
+  const sideBar_ref = useRef(sideBar);
+  useEffect(() => {
+    sideBar_ref.current = sideBar;
+  }, [sideBar]);
+
+  const pathname_ref = useRef(location.pathname);
+  useEffect(() => {
+    pathname_ref.current = location.pathname;
+  }, [location.pathname]);
+
+  // Handle Android hardware / gesture back button inside mobile chat, contact sidebar, or tabs
+  useEffect(() => {
+    window.__handleAndroidBack = () => {
+      if (sideBar_ref.current?.open) {
+        dispatch(CloseSidebar());
+        return "HANDLED";
+      }
+      if (room_id_ref.current !== null) {
+        dispatch(SelectConversation({ room_id: null }));
+        return "HANDLED";
+      }
+      const currentPath = (pathname_ref.current || "").toLowerCase();
+      if (currentPath && currentPath !== "/app" && currentPath !== "/") {
+        navigate("/app");
+        return "HANDLED";
+      }
+      return "EXIT";
+    };
+
+    return () => {
+      delete window.__handleAndroidBack;
+    };
+  }, [dispatch, navigate]);
+
+  useEffect(() => {
+    if (isDesktop) return undefined;
+
+    if (room_id !== null || sideBar?.open) {
+      window.history.pushState({ inMobileSubView: true }, "");
+    }
+
+    const handlePopState = () => {
+      if (sideBar_ref.current?.open) {
+        dispatch(CloseSidebar());
+      } else if (room_id_ref.current !== null) {
+        dispatch(SelectConversation({ room_id: null }));
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [isDesktop, room_id, sideBar?.open, dispatch]);
 
   const current_conversation_ref = useRef(current_conversation);
   useEffect(() => {
@@ -99,6 +155,11 @@ const DashboardLayout = () => {
       }
     }
   }, []);
+
+  // Always start on the main dashboard (Chat list) when opening the app or switching accounts
+  useEffect(() => {
+    dispatch(SelectConversation({ room_id: null }));
+  }, [dispatch, user_id]);
 
   // Fetch user profile
   useEffect(() => {
@@ -130,15 +191,22 @@ const DashboardLayout = () => {
       return;
     }
 
+    const handleSocketConnect = () => {
+      socket.emit("user_connected", { user_id });
+      socket.emit("get_direct_conversations", { user_id }, (data) => {
+        if (Array.isArray(data)) {
+          dispatch(FetchDirectConversations({ conversations: data }));
+        }
+      });
+    };
+
     if (!socket.connected) {
       connectSocket(user_id);
     } else {
-      socket.emit("user_connected", { user_id });
+      handleSocketConnect();
     }
 
-    socket.on("connect", () => {
-      socket.emit("user_connected", { user_id });
-    });
+    socket.on("connect", handleSocketConnect);
 
     // New message
     socket.on("new_message", (data) => {
@@ -301,11 +369,17 @@ const DashboardLayout = () => {
         );
       }
 
-      dispatch(
-        SelectConversation({
-          room_id: data._id,
-        }),
-      );
+      const current_user_id = user_id || window.localStorage.getItem("user_id");
+      if (
+        !data?.initiated_by ||
+        data.initiated_by.toString() === current_user_id?.toString()
+      ) {
+        dispatch(
+          SelectConversation({
+            room_id: data._id,
+          }),
+        );
+      }
     });
 
     // Incoming audio call notification
@@ -393,6 +467,7 @@ const DashboardLayout = () => {
       if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
         navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage);
       }
+      socket?.off("connect", handleSocketConnect);
       socket?.off("new_friend_request");
       socket?.off("request_accepted");
       socket?.off("request_sent");
@@ -428,8 +503,11 @@ const DashboardLayout = () => {
         sx={{
           display: "flex",
           flexDirection: isDesktop ? "row" : "column",
-          width: "100vw",
-          height: { xs: "100dvh", md: "100vh" },
+          width: "100%",
+          maxWidth: "100vw",
+          height: "100%",
+          maxHeight: "100%",
+          minHeight: 0,
           overflow: "hidden",
         }}
       >

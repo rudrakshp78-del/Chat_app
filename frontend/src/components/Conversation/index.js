@@ -57,19 +57,29 @@ const Conversation = () => {
 
   useEffect(() => {
     const activeRoomId = room_id;
-    if (activeRoomId) {
-      const current = (conversationsRef.current || []).find(
-        (el) => el?.id?.toString() === activeRoomId?.toString()
-      );
-      if (current && currentConvIdRef.current?.toString() !== activeRoomId.toString()) {
-        dispatch(SetCurrentConversation(current));
-      }
+    let received = false;
+    const retryTimers = [];
 
+    const clearRetries = () => {
+      while (retryTimers.length > 0) {
+        clearTimeout(retryTimers.pop());
+      }
+    };
+
+    const requestMessages = () => {
+      if (!activeRoomId || !socket.connected) return;
       socket.emit(
         "get_messages",
         { conversation_id: activeRoomId, user_id: current_user_id },
         (messages) => {
-          dispatch(FetchCurrentMessages({ messages: messages || [] }));
+          received = true;
+          clearRetries();
+          dispatch(
+            FetchCurrentMessages({
+              messages: messages || [],
+              conversation_id: activeRoomId,
+            })
+          );
         }
       );
 
@@ -79,10 +89,38 @@ const Conversation = () => {
           user_id: current_user_id,
         });
       }
+    };
+
+    const scheduleMessagesFetch = () => {
+      received = false;
+      clearRetries();
+      requestMessages();
+      [350, 1000].forEach((delay) => {
+        const timer = setTimeout(() => {
+          if (!received && socket.connected) {
+            requestMessages();
+          }
+        }, delay);
+        retryTimers.push(timer);
+      });
+    };
+
+    if (activeRoomId) {
+      const current = (conversationsRef.current || []).find(
+        (el) => el?.id?.toString() === activeRoomId?.toString()
+      );
+      if (current && currentConvIdRef.current?.toString() !== activeRoomId.toString()) {
+        dispatch(SetCurrentConversation(current));
+      }
+
+      scheduleMessagesFetch();
+      socket.on("connect", scheduleMessagesFetch);
     }
 
     // When leaving the conversation, if mode is "after_viewing", delete viewed chats
     return () => {
+      clearRetries();
+      socket.off("connect", scheduleMessagesFetch);
       if (activeRoomId && getChatRetentionMode(activeRoomId) === "after_viewing") {
         socket.emit("clear_chat", {
           conversation_id: activeRoomId,
@@ -169,6 +207,8 @@ const Conversation = () => {
           minHeight: 0,
 
           width: "100%",
+          display: "flex",
+          flexDirection: "column",
 
           overflowY: "auto",
           overflowX: "hidden",
@@ -189,7 +229,14 @@ const Conversation = () => {
             }}
           />
         )}
-        <Box sx={{ position: "relative", zIndex: 1 }}>
+        <Box
+          sx={{
+            position: "relative",
+            zIndex: 1,
+            width: "100%",
+            mt: "auto",
+          }}
+        >
           <Message menu={true} />
         </Box>
       </Box>

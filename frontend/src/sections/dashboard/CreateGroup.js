@@ -15,40 +15,85 @@ import { useDispatch, useSelector } from "react-redux";
 import FormProvider from "../../components/hook-form/FormProvider";
 import { RHFTextField } from "../../components/hook-form";
 import RHFAutocomplete from "../../components/hook-form/RHFAutocomplete";
-import { FetchAllUsers, showSnackbar } from "../../redux/slices/app";
+import {
+  FetchAllUsers,
+  FetchFriends,
+  FetchUsers,
+  showSnackbar,
+} from "../../redux/slices/app";
+import { FetchDirectConversations } from "../../redux/slices/Conversation";
+import { socket } from "../../socket";
 import { getMockAvatar } from "../../utils/getAvatarUrl";
 
 const Transition = React.forwardRef(function Transition(props, ref) {
   return <Slide direction="up" ref={ref} {...props} />;
 });
 
-const FALLBACK_MEMBERS = [
-  "Aarav Sharma",
-  "Priya Patel",
-  "Rohan Verma",
-  "Ananya Gupta",
-  "Vikram Singh",
-  "Neha Joshi",
-];
-
 const CreateGroupForm = ({ handleClose }) => {
   const dispatch = useDispatch();
-  const { all_users = [] } = useSelector((state) => state.app);
+  const {
+    all_users = [],
+    friends = [],
+    users = [],
+    user,
+  } = useSelector((state) => state.app);
+  const { conversations = [] } = useSelector(
+    (state) => state.conversation.direct_chat
+  );
 
   useEffect(() => {
     dispatch(FetchAllUsers());
+    dispatch(FetchFriends());
+    dispatch(FetchUsers());
+
+    const user_id = window.localStorage.getItem("user_id");
+    if (user_id && socket && socket.connected) {
+      socket.emit("get_direct_conversations", { user_id }, (data) => {
+        if (Array.isArray(data)) {
+          dispatch(FetchDirectConversations({ conversations: data }));
+        }
+      });
+    }
   }, [dispatch]);
 
   const memberOptions = React.useMemo(() => {
-    const names = all_users
-      .map((u) => `${u?.firstName || ""} ${u?.lastName || ""}`.trim())
-      .filter(Boolean);
-    return names.length > 0 ? Array.from(new Set(names)) : FALLBACK_MEMBERS;
-  }, [all_users]);
+    const nameSet = new Set();
+
+    // 1. Real users from conversations (active chats)
+    (conversations || []).forEach((conv) => {
+      const convName = (conv?.name || "").trim();
+      if (convName) nameSet.add(convName);
+    });
+
+    // 2. Real friends from backend
+    (friends || []).forEach((f) => {
+      const fullName = `${f?.firstName || ""} ${f?.lastName || ""}`.trim();
+      if (fullName) nameSet.add(fullName);
+    });
+
+    // 3. Real verified users from backend
+    (all_users || []).forEach((u) => {
+      const fullName = `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
+      if (fullName) nameSet.add(fullName);
+    });
+
+    (users || []).forEach((u) => {
+      const fullName = `${u?.firstName || ""} ${u?.lastName || ""}`.trim();
+      if (fullName) nameSet.add(fullName);
+    });
+
+    // 4. Current logged-in user (if not already present)
+    if (user?.firstName) {
+      const myName = `${user.firstName} ${user.lastName || ""}`.trim();
+      if (myName) nameSet.add(myName);
+    }
+
+    return Array.from(nameSet);
+  }, [all_users, friends, users, conversations, user]);
 
   const NewGroupSchema = Yup.object().shape({
     title: Yup.string().required("Title is required"),
-    members: Yup.array().min(2, "Must have at least 2 members"),
+    members: Yup.array().min(1, "Please select at least 1 member"),
   });
 
   const defaultValues = {
@@ -61,10 +106,7 @@ const CreateGroupForm = ({ handleClose }) => {
     defaultValues,
   });
 
-  const {
-    reset,
-    handleSubmit,
-  } = methods;
+  const { reset, handleSubmit } = methods;
 
   const onSubmit = async (data) => {
     try {
@@ -109,6 +151,7 @@ const CreateGroupForm = ({ handleClose }) => {
         <RHFAutocomplete
           name="members"
           label="Members"
+          placeholder="Select or type members..."
           multiple
           freeSolo
           options={memberOptions}
@@ -140,7 +183,13 @@ const CreateGroup = ({ open, handleClose }) => {
       keepMounted
       onClose={handleClose}
       aria-describedby="alert-dialog-slide-description"
-      sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
+      sx={{
+        "& .MuiDialog-paper": {
+          m: { xs: 1.5, sm: 3 },
+          width: "100%",
+          maxWidth: "450px",
+        },
+      }}
     >
       <DialogTitle>{"Create New Group"}</DialogTitle>
 

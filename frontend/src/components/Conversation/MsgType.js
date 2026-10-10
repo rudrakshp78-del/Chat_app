@@ -436,7 +436,7 @@ const MessageBubble = ({ el, children }) => {
       sx={{
         width: "100%",
         position: "relative",
-        mb: el.reaction ? 1.5 : 0.5,
+        mb: el.reaction ? 1.25 : 0.25,
         touchAction: "pan-y",
       }}
     >
@@ -496,7 +496,8 @@ const MessageBubble = ({ el, children }) => {
           width: "fit-content",
           maxWidth: { xs: "82%", sm: "75%" },
           flexShrink: 0,
-          p: 1.5,
+          px: 1.25,
+          py: 0.85,
           borderRadius: 1.5,
           userSelect: "none",
           WebkitUserSelect: "none",
@@ -1098,7 +1099,7 @@ const Timeline = ({ el }) => {
       justifyContent="center"
       sx={{
         width: "100%",
-        my: 1.5,
+        my: 0.75,
         userSelect: "none",
       }}
     >

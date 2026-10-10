@@ -23,6 +23,9 @@ const RootStyle = styled('span')(({ theme }) => ({
     theme.palette.mode === 'light' ? theme.palette.grey[600] : theme.palette.common.black,
     0.36
   )}`,
+  [theme.breakpoints.down('md')]: {
+    display: 'none',
+  },
 }));
 
 const DotStyle = styled('span')(({ theme }) => ({

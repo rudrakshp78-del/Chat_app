@@ -15,24 +15,37 @@ const slice = createSlice({
   initialState,
   reducers: {
     pushToVideoCallQueue(state, action) {
-      // check video_call_queue in redux store
+      const incomingCall = action.payload.call;
+      const isDialogActive =
+        Boolean(state.open_video_dialog) ||
+        Boolean(state.open_video_notification_dialog);
 
-      if (state.call_queue.length === 0) {
-        state.call_queue.push(action.payload.call);
+      if (state.call_queue.length === 0 || !isDialogActive) {
+        state.call_queue = [incomingCall];
         if (action.payload.incoming) {
-          state.open_video_notification_dialog = true; // this will open up the call dialog
+          state.open_video_notification_dialog = true; // this will open up the call notification dialog
+          state.open_video_dialog = false;
           state.incoming = true;
-        }
-        else {
+        } else {
           state.open_video_dialog = true;
+          state.open_video_notification_dialog = false;
           state.incoming = false;
         }
       } else {
+        const currentRoom =
+          state.call_queue[0]?.roomID || state.call_queue[0]?.call_id;
+        const incomingRoom = incomingCall?.roomID || incomingCall?.call_id;
+        if (
+          currentRoom &&
+          incomingRoom &&
+          currentRoom.toString() === incomingRoom.toString()
+        ) {
+          // Ignore duplicate notification for the same active call
+          return;
+        }
         // if queue is not empty then emit user_is_busy => in turn server will send this event to sender of call
         socket.emit("user_is_busy_video_call", { ...action.payload });
       }
-
-      // Ideally queue should be managed on server side
     },
     resetVideoCallQueue(state, action) {
       state.call_queue = [];

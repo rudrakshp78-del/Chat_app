@@ -54,7 +54,19 @@ const StyledBadge = styled(Badge)(({ theme }) => ({
   },
 }));
 
-const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
+const isValidObjectId = (val) =>
+  typeof val === "string" && /^[a-f\d]{24}$/i.test(val);
+
+const CallLogElement = ({
+  img,
+  name,
+  incoming,
+  missed,
+  online,
+  id,
+  timestamp,
+  onStartNewCall,
+}) => {
   const theme = useTheme();
   const dispatch = useDispatch();
 
@@ -114,7 +126,9 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
               ) : (
                 <ArrowUpRight color={missed ? "red" : "green"} />
               )}
-              <Typography variant="caption">Yesterday 21:24</Typography>
+              <Typography variant="caption">
+                {timestamp || "Yesterday 21:24"}
+              </Typography>
             </Stack>
           </Stack>
         </Stack>
@@ -123,7 +137,11 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
             size="small"
             onClick={(e) => {
               e.stopPropagation();
-              if (id !== undefined && id !== null) dispatch(StartAudioCall(id));
+              if (isValidObjectId(id)) {
+                dispatch(StartAudioCall(id));
+              } else if (typeof onStartNewCall === "function") {
+                onStartNewCall();
+              }
             }}
           >
             <Phone size={20} style={{ color: theme.palette.primary.main }} />
@@ -133,10 +151,17 @@ const CallLogElement = ({ img, name, incoming, missed, online, id }) => {
             size="small"
             onClick={(e) => {
               e.stopPropagation();
-              if (id !== undefined && id !== null) dispatch(StartVideoCall(id));
+              if (isValidObjectId(id)) {
+                dispatch(StartVideoCall(id));
+              } else if (typeof onStartNewCall === "function") {
+                onStartNewCall();
+              }
             }}
           >
-            <VideoCamera size={20} style={{ color: theme.palette.primary.main }} />
+            <VideoCamera
+              size={20}
+              style={{ color: theme.palette.primary.main }}
+            />
           </IconButton>
         </Stack>
       </Stack>
