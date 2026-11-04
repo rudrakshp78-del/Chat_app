@@ -50,7 +50,9 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "bump:version": "node scripts/bump-version.js",
+    "build:android": "node scripts/bump-version.js && react-scripts build && npx cap copy"
   },
   "eslintConfig": {
     "extends": [

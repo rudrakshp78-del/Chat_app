@@ -19,9 +19,11 @@ export default function Router() {
       element: <MainLayout />,
       children: [
         { element: <LoginPage />, path: "login" },
+        { element: <RegisterPage />, path: "register" },
         { element: <RegisterPage />, path: "Register" },
         { element: <ResetPasswordPage />, path: "reset-password" },
         { element: <NewPasswordPage />, path: "new-password" },
+        { element: <VerifyPage />, path: "verify" },
         { element: <VerifyPage />, path: "Verify" },
       ],
     },

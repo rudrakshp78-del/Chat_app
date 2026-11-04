@@ -32,6 +32,8 @@ const userSchema = new mongoose.Schema({
   email: {
     type: String,
     required: [true, "Email is required"],
+    lowercase: true,
+    trim: true,
     validate: {
       validator: function (email) {
         return String(email)
@@ -44,38 +46,50 @@ const userSchema = new mongoose.Schema({
     },
   },
   password: {
-    // unselect
     type: String,
+    select: false,
   },
   passwordChangedAt: {
-    // unselect
     type: Date,
+    select: false,
   },
   passwordResetToken: {
-    // unselect
     type: String,
+    select: false,
   },
   passwordResetExpires: {
-    // unselect
     type: Date,
+    select: false,
   },
   createdAt: {
     type: Date,
-    default: Date.now(),
+    default: Date.now,
   },
   updatedAt: {
-    // unselect
     type: Date,
+    select: false,
   },
   verified: {
     type: Boolean,
     default: false,
   },
+  provider: {
+    type: String,
+    default: "local",
+    enum: ["local", "Google", "GitHub", "Twitter", "Social"],
+  },
   otp: {
     type: String,
+    select: false,
   },
   otp_expiry_time: {
     type: Date,
+    select: false,
+  },
+  otp_attempts: {
+    type: Number,
+    default: 0,
+    select: false,
   },
   socket_id: {
     type: String,
@@ -86,9 +100,16 @@ const userSchema = new mongoose.Schema({
       ref: "User",
     },
   ],
+  blocked_users: [
+    {
+      type: mongoose.Schema.ObjectId,
+      ref: "User",
+    },
+  ],
   status: {
     type: String,
-    enum: ["Online", "Offline"]
+    enum: ["Online", "Offline"],
+    default: "Offline",
   }
 });
 
@@ -159,6 +180,9 @@ userSchema.methods.toJSON = function () {
   delete obj.passwordResetExpires;
   return obj;
 };
+
+userSchema.index({ verified: 1 });
+userSchema.index({ email: 1 });
 
 const User = new mongoose.model("User", userSchema);
 module.exports = User;

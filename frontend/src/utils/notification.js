@@ -30,26 +30,42 @@ export const getNotificationPermission = () => {
 
 // 3. Request permission explicitly via User Gesture
 export const requestNotificationPermission = async () => {
-  if (typeof window === "undefined" || !("Notification" in window)) {
-    return false;
+  // 1. Native Android runtime permission for Android 13+ (API 33+)
+  if (typeof window !== "undefined" && window.AndroidNotificationBridge?.requestPermission) {
+    try {
+      window.AndroidNotificationBridge.requestPermission();
+    } catch (e) {
+      console.warn("Android native permission request note:", e);
+    }
   }
 
-  try {
-    const permission = await Notification.requestPermission();
-    if (permission === "granted") {
-      // Play a quick test confirmation chime
-      playNotificationChime();
-      return true;
+  // 2. Web Notification permission
+  if (typeof window !== "undefined" && "Notification" in window) {
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === "granted") {
+        playNotificationSong();
+        return true;
+      }
+    } catch (err) {
+      console.error("requestNotificationPermission error:", err);
     }
-    return false;
-  } catch (err) {
-    console.error("requestNotificationPermission error:", err);
-    return false;
   }
+
+  if (typeof window !== "undefined" && window.AndroidNotificationBridge?.hasPermission) {
+    try {
+      if (window.AndroidNotificationBridge.hasPermission()) {
+        playNotificationSong();
+        return true;
+      }
+    } catch (e) {}
+  }
+
+  return false;
 };
 
-// 4. Play WhatsApp signature dual-tone message chime via Web Audio API
-export const playNotificationChime = () => {
+// 4. Play melodic notification chime song via Web Audio API
+export const playNotificationSong = () => {
   if (typeof window === "undefined") return;
 
   // Check if sound is disabled in settings
@@ -67,33 +83,46 @@ export const playNotificationChime = () => {
 
     const now = ctx.currentTime;
 
-    // First chime note: G5 (784Hz)
-    const osc1 = ctx.createOscillator();
-    const gain1 = ctx.createGain();
-    osc1.type = "sine";
-    osc1.frequency.setValueAtTime(784, now);
-    gain1.gain.setValueAtTime(0.2, now);
-    gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.12);
-    osc1.connect(gain1);
-    gain1.connect(ctx.destination);
-    osc1.start(now);
-    osc1.stop(now + 0.12);
+    // Ascending 4-note musical crystal chime: C5 (523Hz) -> E5 (659Hz) -> G5 (784Hz) -> C6 (1046Hz)
+    const melody = [
+      { freq: 523.25, time: 0.00, dur: 0.15, gain: 0.22 },
+      { freq: 659.25, time: 0.09, dur: 0.17, gain: 0.25 },
+      { freq: 783.99, time: 0.18, dur: 0.19, gain: 0.28 },
+      { freq: 1046.50, time: 0.27, dur: 0.45, gain: 0.32 },
+    ];
 
-    // Second chime note: C6 (1046.5Hz) - creates WhatsApp's distinct high chime
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "sine";
-    osc2.frequency.setValueAtTime(1046.5, now + 0.08);
-    gain2.gain.setValueAtTime(0.28, now + 0.08);
-    gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.38);
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    osc2.start(now + 0.08);
-    osc2.stop(now + 0.38);
+    melody.forEach((note) => {
+      // Fundamental pure sine tone
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(note.freq, now + note.time);
+      gain.gain.setValueAtTime(note.gain, now + note.time);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + note.time + note.dur);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + note.time);
+      osc.stop(now + note.time + note.dur);
+
+      // Sweet harmonic bell overtone (triangle wave)
+      const overtone = ctx.createOscillator();
+      const overGain = ctx.createGain();
+      overtone.type = "triangle";
+      overtone.frequency.setValueAtTime(note.freq * 2, now + note.time);
+      overGain.gain.setValueAtTime(note.gain * 0.35, now + note.time);
+      overGain.gain.exponentialRampToValueAtTime(0.0001, now + note.time + note.dur * 0.7);
+      overtone.connect(overGain);
+      overGain.connect(ctx.destination);
+      overtone.start(now + note.time);
+      overtone.stop(now + note.time + note.dur * 0.7);
+    });
   } catch (e) {
-    console.log("Audio chime note:", e.message);
+    console.log("Audio notification song note:", e.message);
   }
 };
+
+// Aliased for full backwards compatibility
+export const playNotificationChime = playNotificationSong;
 
 // 5. Update browser tab title badge when minimized / in background
 export const updateTabTitleBadge = (senderName, messageText) => {
@@ -147,21 +176,56 @@ export const showOutsideNotification = async ({
   conversation_id,
   onClick,
 }) => {
-  if (typeof window === "undefined" || !("Notification" in window)) {
+  if (typeof window === "undefined") {
     return false;
   }
 
-  // Always play notification sound if user is outside this chat or window is in background
+  // Always play notification sound and haptic feedback
   playNotificationChime();
+  if (typeof navigator !== "undefined" && navigator.vibrate) {
+    try {
+      navigator.vibrate([80, 40, 80]);
+    } catch {
+      // ignore
+    }
+  }
+
+  // 1. Post to native Android system notification bar if running inside Android app
+  if (typeof window !== "undefined" && window.AndroidNotificationBridge?.showNotification) {
+    try {
+      window.AndroidNotificationBridge.showNotification(
+        title || "Trackon",
+        body || "New message received",
+        conversation_id ? String(conversation_id) : ""
+      );
+    } catch (e) {
+      console.warn("Android native notification post error:", e);
+    }
+  }
 
   // If window is backgrounded or minimized, update title
   if (document.hidden) {
     updateTabTitleBadge(title, body);
   }
 
+  if (!("Notification" in window)) {
+    return false;
+  }
+
+  // If permission has not been requested yet, request it!
+  if (Notification.permission === "default") {
+    try {
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        return false;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   // Check if system notification permission is granted
   if (Notification.permission !== "granted") {
-    console.log("Desktop notification skipped: permission is", Notification.permission);
     return false;
   }
 

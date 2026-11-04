@@ -20,6 +20,7 @@ import { CallLogElement } from "../../components/CallElement";
 import { CallLogs } from "../../data";
 import StartCall from "../../sections/dashboard/StartCall";
 import { FetchCallLogs } from "../../redux/slices/app";
+import ProfileMenu from "../../layouts/dashboard/ProfileMenu";
 
 const Call = () => {
   const theme = useTheme();
@@ -101,12 +102,15 @@ const Call = () => {
           }}
         >
           <Stack
-            p={{ xs: 2, sm: 3 }}
-            spacing={2}
+            pt={{ xs: 0.75, sm: 1.5 }}
+            px={{ xs: 1.75, sm: 2.5 }}
+            pb={0}
+            spacing={{ xs: 1.25, sm: 2 }}
             sx={{ height: "100%", flex: 1, minHeight: 0 }}
           >
-            <Stack>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography variant="h5">Call Logs</Typography>
+              <ProfileMenu />
             </Stack>
             <Stack sx={{ width: "100%" }}>
               <Search>

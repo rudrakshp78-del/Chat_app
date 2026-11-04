@@ -7,10 +7,8 @@ import {
   Divider,
   Button,
 } from "@mui/material";
-import { useTheme } from "@mui/material/styles";
+import { useTheme, alpha } from "@mui/material/styles";
 import {
-  ArchiveBox,
-  CircleDashed,
   MagnifyingGlass,
   Users,
 } from "phosphor-react";
@@ -25,11 +23,15 @@ import ChatElement from "../../components/ChatElement";
 import Friends from "../../sections/dashboard/Friends";
 import StatusAvatar from "../../components/Status/StatusAvatar";
 import NotificationBanner from "../../components/NotificationBanner";
+import ProfileMenu from "../../layouts/dashboard/ProfileMenu";
 
 import { socket } from "../../socket";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { FetchDirectConversations } from "../../redux/slices/Conversation";
+import {
+  FetchDirectConversations,
+  FetchDirectConversationsFromServer,
+} from "../../redux/slices/Conversation";
 import { FetchAllStatuses } from "../../redux/slices/status";
 import {
   isFriendPinned,
@@ -38,12 +40,13 @@ import {
 
 const Chats = () => {
   const navigate = useNavigate();
+  const theme = useTheme();
+  const dispatch = useDispatch();
+
   const [openDialog, setOpenDialog] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [activeFilter, setActiveFilter] = useState("all");
   const [, setFriendshipTick] = useState(0);
-  const theme = useTheme();
-
-  const dispatch = useDispatch();
 
   const { user } = useSelector((state) => state.app);
   const { conversations } = useSelector(
@@ -51,7 +54,6 @@ const Chats = () => {
   );
   const { myStatuses, otherStatuses } = useSelector((state) => state.status);
 
-  const [showArchived, setShowArchived] = useState(false);
   const [archivedIds, setArchivedIds] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("trackon_archived_chats") || "[]");
@@ -59,6 +61,43 @@ const Chats = () => {
       return [];
     }
   });
+
+  const totalUnreadCount = React.useMemo(() => {
+    return (conversations || []).reduce(
+      (acc, el) => acc + (Number(el.unread) || 0),
+      0
+    );
+  }, [conversations]);
+
+  const pinnedCount = React.useMemo(() => {
+    return (conversations || []).filter((el) => isFriendPinned(el.id)).length;
+  }, [conversations]);
+
+  const filteredConversations = React.useMemo(() => {
+    return (conversations || [])
+      .filter((el) => {
+        const isArch = archivedIds.includes(String(el.id));
+        if (activeFilter === "archived") return isArch;
+        if (isArch) return false;
+        if (activeFilter === "unread") return Number(el.unread) > 0;
+        if (activeFilter === "pinned") return isFriendPinned(el.id);
+        return true;
+      })
+      .filter((el) => {
+        if (!searchTerm.trim()) return true;
+        const q = searchTerm.trim().toLowerCase();
+        const nick = getFriendNickname(el.id)?.toLowerCase() || "";
+        return (
+          el?.name?.toLowerCase().includes(q) || nick.includes(q)
+        );
+      })
+      .slice()
+      .sort((a, b) => {
+        const pinA = isFriendPinned(a.id) ? 1 : 0;
+        const pinB = isFriendPinned(b.id) ? 1 : 0;
+        return pinB - pinA;
+      });
+  }, [conversations, activeFilter, archivedIds, searchTerm]);
 
   useEffect(() => {
     const syncArchived = () => {
@@ -82,7 +121,21 @@ const Chats = () => {
   }, []);
 
   useEffect(() => {
-    dispatch(FetchAllStatuses());
+    const handleAppRefresh = () => {
+      dispatch(FetchDirectConversationsFromServer());
+      dispatch(FetchAllStatuses());
+    };
+    window.addEventListener("app_refresh", handleAppRefresh);
+    return () => {
+      window.removeEventListener("app_refresh", handleAppRefresh);
+    };
+  }, [dispatch]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      dispatch(FetchAllStatuses());
+    }, 400);
+    return () => clearTimeout(timer);
   }, [dispatch]);
 
   const authUserId = useSelector((state) => state.auth.user_id);
@@ -95,18 +148,10 @@ const Chats = () => {
     }
 
     let received = false;
-    const retryTimers = [];
-
-    const clearRetries = () => {
-      while (retryTimers.length > 0) {
-        clearTimeout(retryTimers.pop());
-      }
-    };
 
     const handleConversationsData = (data) => {
       if (!Array.isArray(data)) return;
       received = true;
-      clearRetries();
       dispatch(
         FetchDirectConversations({
           conversations: data,
@@ -121,38 +166,25 @@ const Chats = () => {
       });
     };
 
-    const scheduleFetchWithRetry = () => {
-      received = false;
-      clearRetries();
-      requestConversations();
-      // Fast automatic retries in case server was still initializing connection listeners
-      [350, 900, 2200].forEach((delay) => {
-        const timer = setTimeout(() => {
-          if (!received && socket.connected) {
-            requestConversations();
-          }
-        }, delay);
-        retryTimers.push(timer);
-      });
-    };
+    // Fetch immediately via HTTP REST API so we don't wait for Socket.IO handshake
+    dispatch(FetchDirectConversationsFromServer());
 
     // Set user_id for Socket.IO connection
     socket.io.opts.query = {
       user_id,
     };
 
-    socket.on("connect", scheduleFetchWithRetry);
+    socket.on("connect", requestConversations);
     socket.on("direct_conversations", handleConversationsData);
 
     if (!socket.connected) {
       socket.connect();
-    } else {
-      scheduleFetchWithRetry();
+    } else if (!received) {
+      requestConversations();
     }
 
     return () => {
-      clearRetries();
-      socket.off("connect", scheduleFetchWithRetry);
+      socket.off("connect", requestConversations);
       socket.off("direct_conversations", handleConversationsData);
     };
   }, [dispatch, authUserId]);
@@ -180,8 +212,10 @@ const Chats = () => {
         }}
       >
         <Stack
-          p={{ xs: 2, sm: 3 }}
-          spacing={2}
+          pt={{ xs: 0.75, sm: 1.5 }}
+          px={{ xs: 1.75, sm: 2.5 }}
+          pb={0}
+          spacing={{ xs: 1.25, sm: 2 }}
           sx={{
             height: "100%",
             boxSizing: "border-box",
@@ -193,27 +227,101 @@ const Chats = () => {
             alignItems="center"
             justifyContent="space-between"
           >
-            <Typography variant="h5">Chats</Typography>
+            <Stack direction="row" alignItems="center" spacing={1.2}>
+              <Typography
+                variant="h5"
+                sx={{
+                  fontWeight: 800,
+                  letterSpacing: "-0.5px",
+                  background: (theme) =>
+                    theme.palette.mode === "light"
+                      ? `linear-gradient(135deg, ${theme.palette.primary.main} 0%, #00A884 60%, #1CCAFF 100%)`
+                      : `linear-gradient(135deg, #60A5FA 0%, #34D399 60%, #38BDF8 100%)`,
+                  WebkitBackgroundClip: "text",
+                  WebkitTextFillColor: "transparent",
+                  display: "inline-block",
+                }}
+              >
+                Track-Chat
+              </Typography>
+              <Box
+                sx={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: "50%",
+                  bgcolor: "#00A884",
+                  boxShadow: "0 0 0 2px rgba(0, 168, 132, 0.35)",
+                  animation: "pulse 2s infinite ease-in-out",
+                  "@keyframes pulse": {
+                    "0%": { transform: "scale(0.95)", opacity: 0.8 },
+                    "50%": { transform: "scale(1.2)", opacity: 1 },
+                    "100%": { transform: "scale(0.95)", opacity: 0.8 },
+                  },
+                }}
+              />
+            </Stack>
 
             <Stack direction="row" alignItems="center" spacing={1}>
-              <IconButton onClick={handleOpenDialog}>
-                <Users />
+              <IconButton
+                onClick={handleOpenDialog}
+                title="Explore & Friends"
+                sx={{
+                  p: 1.1,
+                  borderRadius: 2,
+                  bgcolor: (theme) =>
+                    theme.palette.mode === "light"
+                      ? alpha(theme.palette.primary.main, 0.08)
+                      : alpha(theme.palette.primary.main, 0.2),
+                  color: "primary.main",
+                  transition: "all 0.2s ease-in-out",
+                  "&:hover": {
+                    bgcolor: (theme) => alpha(theme.palette.primary.main, 0.16),
+                    transform: "scale(1.08)",
+                  },
+                }}
+              >
+                <Users size={20} weight="duotone" />
               </IconButton>
-
-              <IconButton onClick={() => navigate("/status")}>
-                <CircleDashed />
-              </IconButton>
+              <ProfileMenu />
             </Stack>
           </Stack>
 
-          {/* DESKTOP NOTIFICATION PROMPT (WhatsApp Style) */}
+          {/* DESKTOP NOTIFICATION PROMPT */}
           <NotificationBanner />
 
           {/* SEARCH */}
           <Stack sx={{ width: "100%" }}>
-            <Search>
+            <Search
+              sx={{
+                borderRadius: 2.5,
+                border: (theme) =>
+                  `1px solid ${
+                    theme.palette.mode === "light"
+                      ? "rgba(1, 98, 196, 0.14)"
+                      : "rgba(255, 255, 255, 0.1)"
+                  }`,
+                bgcolor: (theme) =>
+                  theme.palette.mode === "light"
+                    ? "#ffffff"
+                    : alpha(theme.palette.background.paper, 0.8),
+                boxShadow: (theme) =>
+                  theme.palette.mode === "light"
+                    ? "0 2px 8px rgba(0, 0, 0, 0.04)"
+                    : "0 2px 8px rgba(0, 0, 0, 0.2)",
+                transition: "all 0.2s ease-in-out",
+                "&:focus-within": {
+                  borderColor: "primary.main",
+                  boxShadow: (theme) =>
+                    `0 0 0 3px ${alpha(theme.palette.primary.main, 0.18)}`,
+                },
+              }}
+            >
               <SearchIconWrapper>
-                <MagnifyingGlass color="#709CE6" />
+                <MagnifyingGlass
+                  size={18}
+                  weight="bold"
+                  color={theme.palette.primary.main}
+                />
               </SearchIconWrapper>
 
               <StyledInputBase
@@ -227,8 +335,95 @@ const Chats = () => {
             </Search>
           </Stack>
 
-          {/* WHATSAPP STATUS TRAY */}
-          <Box sx={{ width: "100%", pt: 0.5, pb: 0.5 }}>
+          {/* TRENDING CHAT FILTERS */}
+          <Stack
+            direction="row"
+            spacing={1}
+            alignItems="center"
+            sx={{
+              overflowX: "auto",
+              py: 0.5,
+              "&::-webkit-scrollbar": { display: "none" },
+              msOverflowStyle: "none",
+              scrollbarWidth: "none",
+            }}
+          >
+            {[
+              {
+                id: "all",
+                label: "All",
+                count: (conversations || []).filter(
+                  (c) => !archivedIds.includes(String(c.id))
+                ).length,
+              },
+              { id: "unread", label: "Unread", count: totalUnreadCount },
+              { id: "pinned", label: "Pinned", count: pinnedCount },
+              { id: "archived", label: "Archived", count: archivedIds.length },
+            ].map((tab) => {
+              const isActive = activeFilter === tab.id;
+              return (
+                <Box
+                  key={tab.id}
+                  onClick={() => setActiveFilter(tab.id)}
+                  sx={{
+                    px: 1.6,
+                    py: 0.55,
+                    borderRadius: 2,
+                    fontSize: "0.785rem",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 0.75,
+                    transition: "all 0.2s ease-in-out",
+                    ...(isActive
+                      ? {
+                          bgcolor: "primary.main",
+                          color: "#ffffff",
+                          boxShadow: (theme) =>
+                            `0 3px 10px ${alpha(theme.palette.primary.main, 0.35)}`,
+                        }
+                      : {
+                          bgcolor: (theme) =>
+                            theme.palette.mode === "light"
+                              ? alpha(theme.palette.primary.main, 0.06)
+                              : alpha(theme.palette.primary.main, 0.15),
+                          color: "text.secondary",
+                          "&:hover": {
+                            bgcolor: (theme) =>
+                              alpha(theme.palette.primary.main, 0.12),
+                            color: "text.primary",
+                          },
+                        }),
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {tab.count > 0 && (
+                    <Box
+                      component="span"
+                      sx={{
+                        px: 0.65,
+                        py: 0.1,
+                        borderRadius: 1,
+                        fontSize: "0.68rem",
+                        fontWeight: 700,
+                        bgcolor: isActive
+                          ? "rgba(255, 255, 255, 0.25)"
+                          : (theme) => alpha(theme.palette.primary.main, 0.15),
+                        color: isActive ? "#ffffff" : "primary.main",
+                      }}
+                    >
+                      {tab.count}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+          </Stack>
+
+          {/* STATUS TRAY */}
+          <Box sx={{ width: "100%", pt: 0.2, pb: 0.2 }}>
             <Stack
               direction="row"
               alignItems="center"
@@ -317,37 +512,7 @@ const Chats = () => {
             </Stack>
           </Box>
 
-          {/* ARCHIVE */}
-          <Stack spacing={1}>
-            <Stack
-              direction="row"
-              alignItems="center"
-              justifyContent="space-between"
-            >
-              <Stack direction="row" alignItems="center" spacing={1.5}>
-                <ArchiveBox
-                  size={24}
-                  color={showArchived ? theme.palette.primary.main : undefined}
-                />
-                <Button
-                  onClick={() => setShowArchived((prev) => !prev)}
-                  color={showArchived ? "primary" : "inherit"}
-                >
-                  {showArchived ? "Back to All Chats" : "Archived"}
-                </Button>
-              </Stack>
-              {archivedIds.length > 0 && (
-                <Typography
-                  variant="caption"
-                  sx={{ color: "primary.main", fontWeight: 600, pr: 1 }}
-                >
-                  {archivedIds.length}
-                </Typography>
-              )}
-            </Stack>
-
-            <Divider />
-          </Stack>
+          <Divider sx={{ my: 0.5 }} />
 
           {/* CHAT LIST */}
           <Box
@@ -359,39 +524,83 @@ const Chats = () => {
             }}
           >
             <SimpleBarStyle timeout={500} clickOnTrack={false}>
-              <Stack spacing={2.4}>
-                <Typography
-                  variant="subtitle2"
-                  sx={{
-                    color: "#676767",
-                    marginTop: 2,
-                  }}
+              <Stack spacing={1.5}>
+                <Stack
+                  direction="row"
+                  alignItems="center"
+                  justifyContent="space-between"
+                  sx={{ mt: 0.5, mb: 0.5, px: 0.5 }}
                 >
-                  {showArchived ? "Archived Chats" : "All Chats"}
-                </Typography>
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "text.secondary",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: 1.1,
+                      fontSize: "0.72rem",
+                    }}
+                  >
+                    {activeFilter === "archived"
+                      ? "Archived Chats"
+                      : activeFilter === "unread"
+                      ? "Unread Messages"
+                      : activeFilter === "pinned"
+                      ? "Pinned Best Friends"
+                      : "Recent Chats"}
+                  </Typography>
 
-                {conversations
-                  .filter((el) => {
-                    const isArch = archivedIds.includes(String(el.id));
-                    return showArchived ? isArch : !isArch;
-                  })
-                  .filter((el) => {
-                    if (!searchTerm.trim()) return true;
-                    const q = searchTerm.trim().toLowerCase();
-                    const nick = getFriendNickname(el.id)?.toLowerCase() || "";
-                    return (
-                      el?.name?.toLowerCase().includes(q) || nick.includes(q)
-                    );
-                  })
-                  .slice()
-                  .sort((a, b) => {
-                    const pinA = isFriendPinned(a.id) ? 1 : 0;
-                    const pinB = isFriendPinned(b.id) ? 1 : 0;
-                    return pinB - pinA;
-                  })
-                  .map((el) => (
+                  <Typography
+                    variant="caption"
+                    sx={{
+                      color: "primary.main",
+                      fontWeight: 700,
+                      bgcolor: (theme) => alpha(theme.palette.primary.main, 0.1),
+                      px: 0.9,
+                      py: 0.25,
+                      borderRadius: 1,
+                      fontSize: "0.7rem",
+                    }}
+                  >
+                    {filteredConversations.length}
+                  </Typography>
+                </Stack>
+
+                {filteredConversations.length === 0 ? (
+                  <Box
+                    sx={{
+                      py: 6,
+                      textAlign: "center",
+                      color: "text.secondary",
+                    }}
+                  >
+                    <Typography variant="body2" fontWeight={500}>
+                      {activeFilter === "unread"
+                        ? "No unread messages"
+                        : activeFilter === "pinned"
+                        ? "No pinned best friends yet"
+                        : activeFilter === "archived"
+                        ? "No archived conversations"
+                        : searchTerm
+                        ? "No chats found matching search"
+                        : "No conversations yet"}
+                    </Typography>
+                    {activeFilter === "all" && !searchTerm && (
+                      <Button
+                        size="small"
+                        onClick={handleOpenDialog}
+                        variant="outlined"
+                        sx={{ mt: 2, borderRadius: 2, textTransform: "none" }}
+                      >
+                        Find People to Chat
+                      </Button>
+                    )}
+                  </Box>
+                ) : (
+                  filteredConversations.map((el) => (
                     <ChatElement key={el.id} {...el} />
-                  ))}
+                  ))
+                )}
               </Stack>
             </SimpleBarStyle>
           </Box>
@@ -399,10 +608,7 @@ const Chats = () => {
       </Box>
 
       {openDialog && (
-        <Friends
-          open={openDialog}
-          handleClose={handleCloseDialog}
-        />
+        <Friends open={openDialog} handleClose={handleCloseDialog} />
       )}
     </>
   );

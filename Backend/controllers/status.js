@@ -48,8 +48,15 @@ exports.createStatus = catchAsync(async (req, res, next) => {
 exports.getAllStatuses = catchAsync(async (req, res, next) => {
   const currentUserId = req.user._id.toString();
 
-  // Find all unexpired statuses
+  // PRIVACY: Only show statuses from friends and own statuses
+  const friendIds = Array.isArray(req.user.friends)
+    ? req.user.friends.map((f) => (f?._id || f).toString())
+    : [];
+  const allowedAuthorIds = [...friendIds, currentUserId];
+
+  // Find all unexpired statuses of friends and self only
   const allStatuses = await Status.find({
+    author: { $in: allowedAuthorIds },
     expiresAt: { $gt: new Date() },
   })
     .populate("author", "_id firstName lastName avatar status")

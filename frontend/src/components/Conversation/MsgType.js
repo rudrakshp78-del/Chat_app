@@ -19,6 +19,7 @@ import {
   DotsThreeVertical,
   DownloadSimple,
   FileText,
+  Microphone,
   MusicNotes,
   Pause,
   Play,
@@ -1086,6 +1087,269 @@ const DocMsg = ({ el }) => {
 };
 
 /* =========================
+   VOICE MESSAGE (WhatsApp style)
+========================= */
+
+let activeVoiceAudio = null;
+let activeVoiceStopHandler = null;
+
+const formatAudioDuration = (secs) => {
+  if (!secs || isNaN(secs) || !isFinite(secs)) return "0:00";
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
+};
+
+// Realistic voice waveform bar heights (28 bars)
+const WAVEFORM_BARS = [
+  30, 60, 45, 90, 75, 40, 65, 85, 100, 50,
+  70, 95, 40, 80, 60, 90, 75, 35, 55, 80,
+  100, 65, 45, 85, 70, 40, 60, 30
+];
+
+const VoiceMsg = ({ el }) => {
+  const theme = useTheme();
+  const audioSrc = el.file || el.url;
+  const audioRef = React.useRef(null);
+
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const [currentTime, setCurrentTime] = React.useState(0);
+  const [duration, setDuration] = React.useState(Number(el.duration) || 0);
+  const [playbackRate, setPlaybackRate] = React.useState(1);
+
+  React.useEffect(() => {
+    if (!audioSrc) return undefined;
+
+    const audio = new window.Audio(audioSrc);
+    audioRef.current = audio;
+
+    const handleLoadedMetadata = () => {
+      if (audio.duration && isFinite(audio.duration)) {
+        setDuration(Math.round(audio.duration));
+      }
+    };
+
+    const handleTimeUpdate = () => {
+      setCurrentTime(audio.currentTime);
+    };
+
+    const handleEnded = () => {
+      setIsPlaying(false);
+      setCurrentTime(0);
+      if (activeVoiceAudio === audio) {
+        activeVoiceAudio = null;
+        activeVoiceStopHandler = null;
+      }
+    };
+
+    audio.addEventListener("loadedmetadata", handleLoadedMetadata);
+    audio.addEventListener("timeupdate", handleTimeUpdate);
+    audio.addEventListener("ended", handleEnded);
+
+    return () => {
+      audio.pause();
+      audio.removeEventListener("loadedmetadata", handleLoadedMetadata);
+      audio.removeEventListener("timeupdate", handleTimeUpdate);
+      audio.removeEventListener("ended", handleEnded);
+      if (activeVoiceAudio === audio) {
+        activeVoiceAudio = null;
+        activeVoiceStopHandler = null;
+      }
+    };
+  }, [audioSrc]);
+
+  const togglePlay = (e) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio) return;
+
+    if (isPlaying) {
+      audio.pause();
+      setIsPlaying(false);
+      if (activeVoiceAudio === audio) {
+        activeVoiceAudio = null;
+        activeVoiceStopHandler = null;
+      }
+    } else {
+      if (activeVoiceAudio && activeVoiceAudio !== audio) {
+        activeVoiceAudio.pause();
+        if (activeVoiceStopHandler) activeVoiceStopHandler();
+      }
+      activeVoiceAudio = audio;
+      activeVoiceStopHandler = () => setIsPlaying(false);
+
+      audio.playbackRate = playbackRate;
+      audio.play().then(() => {
+        setIsPlaying(true);
+      }).catch((err) => {
+        console.warn("Audio playback error:", err);
+      });
+    }
+  };
+
+  const cyclePlaybackRate = (e) => {
+    e.stopPropagation();
+    const nextRate = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : 1;
+    setPlaybackRate(nextRate);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = nextRate;
+    }
+  };
+
+  const handleSeek = (e, barIndex) => {
+    e.stopPropagation();
+    const audio = audioRef.current;
+    if (!audio || !duration) return;
+    const seekPercentage = barIndex / (WAVEFORM_BARS.length - 1);
+    const newTime = seekPercentage * duration;
+    audio.currentTime = newTime;
+    setCurrentTime(newTime);
+  };
+
+  const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const activeBarsCount = Math.floor(progress * WAVEFORM_BARS.length);
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
+
+  const isLight = theme.palette.mode === "light";
+  const bubbleTextColor = el.incoming ? theme.palette.text.primary : "#fff";
+  const mutedColor = el.incoming
+    ? isLight ? "rgba(0,0,0,0.25)" : "rgba(255,255,255,0.3)"
+    : "rgba(255,255,255,0.4)";
+  const activeColor = el.incoming
+    ? theme.palette.primary.main
+    : "#ffffff";
+
+  return (
+    <MessageBubble el={el}>
+      <Stack spacing={0.5} sx={{ minWidth: { xs: 220, sm: 260 }, pt: 0.5, pb: 0.25 }}>
+        <Stack direction="row" alignItems="center" spacing={1.25}>
+          {/* Play / Pause button */}
+          <IconButton
+            size="medium"
+            onClick={togglePlay}
+            sx={{
+              width: 42,
+              height: 42,
+              flexShrink: 0,
+              bgcolor: el.incoming
+                ? theme.palette.primary.main
+                : "rgba(255, 255, 255, 0.25)",
+              color: "#ffffff",
+              boxShadow: "0 2px 6px rgba(0,0,0,0.18)",
+              "&:hover": {
+                bgcolor: el.incoming
+                  ? theme.palette.primary.dark
+                  : "rgba(255, 255, 255, 0.35)",
+              },
+            }}
+          >
+            {isPlaying ? (
+              <Pause size={20} weight="fill" />
+            ) : (
+              <Play size={20} weight="fill" style={{ marginLeft: 2 }} />
+            )}
+          </IconButton>
+
+          {/* Waveform Bar & Progress */}
+          <Stack spacing={0.75} sx={{ flex: 1, minWidth: 0, pr: 0.5 }}>
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                gap: "2.5px",
+                height: 30,
+                cursor: "pointer",
+                py: 0.5,
+              }}
+            >
+              {WAVEFORM_BARS.map((heightPercent, idx) => {
+                const isActive = idx <= activeBarsCount;
+                return (
+                  <Box
+                    key={idx}
+                    onClick={(e) => handleSeek(e, idx)}
+                    sx={{
+                      flex: 1,
+                      height: `${heightPercent}%`,
+                      minHeight: 4,
+                      borderRadius: 1,
+                      bgcolor: isActive ? activeColor : mutedColor,
+                      transition: "background-color 0.1s ease, transform 0.1s ease",
+                      "&:hover": {
+                        transform: "scaleY(1.2)",
+                      },
+                    }}
+                  />
+                );
+              })}
+            </Box>
+
+            {/* Time display & Speed Toggle */}
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
+              <Typography
+                variant="caption"
+                sx={{
+                  fontSize: "0.72rem",
+                  fontWeight: 600,
+                  color: el.incoming ? theme.palette.text.secondary : "rgba(255, 255, 255, 0.8)",
+                  lineHeight: 1,
+                }}
+              >
+                {isPlaying || currentTime > 0
+                  ? formatAudioDuration(currentTime)
+                  : formatAudioDuration(duration)}
+              </Typography>
+
+              <Box
+                onClick={cyclePlaybackRate}
+                sx={{
+                  px: 0.8,
+                  py: 0.2,
+                  borderRadius: 1,
+                  bgcolor: el.incoming
+                    ? isLight ? alpha(theme.palette.primary.main, 0.1) : "rgba(255,255,255,0.1)"
+                    : "rgba(255, 255, 255, 0.2)",
+                  color: bubbleTextColor,
+                  fontSize: "0.68rem",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  userSelect: "none",
+                  "&:hover": {
+                    opacity: 0.85,
+                  },
+                }}
+              >
+                {playbackRate}x
+              </Box>
+            </Stack>
+          </Stack>
+
+          {/* Mic icon indicator */}
+          <Box
+            sx={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              alignSelf: "flex-start",
+              mt: 0.5,
+              color: el.incoming
+                ? theme.palette.primary.main
+                : "rgba(255,255,255,0.7)",
+            }}
+          >
+            <Microphone size={18} weight="fill" />
+          </Box>
+        </Stack>
+      </Stack>
+    </MessageBubble>
+  );
+};
+
+
+/* =========================
    TIMELINE
 ========================= */
 
@@ -1144,4 +1408,5 @@ export {
   ReplyMsg,
   LinkMsg,
   DocMsg,
+  VoiceMsg,
 };

@@ -26,7 +26,9 @@ import {
   Palette,
   CheckCircle,
   PencilSimple,
+  SignOut,
 } from "phosphor-react";
+import LogoutDialog from "../../components/LogoutDialog";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import Shortcuts from "../../sections/dashboard/settings/Shortcuts";
@@ -58,63 +60,66 @@ const Settings = () => {
   const [openWallpaper, setOpenWallpaper] = useState(false);
   const [openRequestAccount, setOpenRequestAccount] = useState(false);
   const [openHelp, setOpenHelp] = useState(false);
+  const [openLogout, setOpenLogout] = useState(false);
 
   const handleOpenShortcuts = () => setOpenShortcuts(true);
   const handleCloseShortcuts = () => setOpenShortcuts(false);
 
+  const primaryColor = theme.palette.primary.main;
+
   const list = [
     {
       Key: 0,
-      icon: <Bell size={22} color="#00A884" weight="duotone" />,
+      icon: <Bell size={22} color={primaryColor} weight="duotone" />,
       title: "Notifications",
       subtitle: "Messages, groups & call alerts",
       onclick: () => setOpenNotifications(true),
     },
     {
       Key: 1,
-      icon: <Lock size={22} color="#00A884" weight="duotone" />,
+      icon: <Lock size={22} color={primaryColor} weight="duotone" />,
       title: "Privacy",
       subtitle: "Block contacts, disappearing messages",
       onclick: () => setOpenPrivacy(true),
     },
     {
       Key: 2,
-      icon: <Key size={22} color="#00A884" weight="duotone" />,
+      icon: <Key size={22} color={primaryColor} weight="duotone" />,
       title: "Security",
       subtitle: "End-to-end encryption, 2-step PIN",
       onclick: () => setOpenSecurity(true),
     },
     {
       Key: 3,
-      icon: <Palette size={22} color="#00A884" weight="duotone" />,
+      icon: <Palette size={22} color={primaryColor} weight="duotone" />,
       title: "Theme",
       subtitle: "Light, Dark mode & Accent colors",
       onclick: () => setOpenTheme(true),
     },
     {
       Key: 4,
-      icon: <Image size={22} color="#00A884" weight="duotone" />,
+      icon: <Image size={22} color={primaryColor} weight="duotone" />,
       title: "Chat Wallpaper",
       subtitle: "Doodles, solid colors & gallery photos",
       onclick: () => setOpenWallpaper(true),
     },
     {
       Key: 5,
-      icon: <Note size={22} color="#00A884" weight="duotone" />,
+      icon: <Note size={22} color={primaryColor} weight="duotone" />,
       title: "Request Account Info",
       subtitle: "Download account details report",
       onclick: () => setOpenRequestAccount(true),
     },
     {
       Key: 6,
-      icon: <Keyboard size={22} color="#00A884" weight="duotone" />,
+      icon: <Keyboard size={22} color={primaryColor} weight="duotone" />,
       title: "Keyboard Shortcuts",
       subtitle: "Quick navigation hotkeys",
       onclick: handleOpenShortcuts,
     },
     {
       Key: 7,
-      icon: <Info size={22} color="#00A884" weight="duotone" />,
+      icon: <Info size={22} color={primaryColor} weight="duotone" />,
       title: "Help",
       subtitle: "Help center, contact us, app info",
       onclick: () => setOpenHelp(true),
@@ -138,7 +143,11 @@ const Settings = () => {
             boxShadow: { xs: "none", md: "0px 0px 2px rgba(0, 0, 0, 0.25)" },
           }}
         >
-          <Stack p={{ xs: 2.5, sm: 3.5 }} spacing={3}>
+          <Stack
+            pt={{ xs: 1, sm: 2.5 }}
+            px={{ xs: 2, sm: 3.5 }}
+            spacing={{ xs: 2, sm: 3 }}
+          >
             {/* Header */}
             <Stack direction={"row"} alignItems="center" spacing={2}>
               <IconButton onClick={() => navigate("/app")}>
@@ -170,7 +179,7 @@ const Settings = () => {
             >
               <Stack direction={"row"} spacing={2} alignItems="center">
                 <Avatar
-                  sx={{ width: 60, height: 60, border: "2px solid #00A884" }}
+                  sx={{ width: 60, height: 60, border: `2px solid ${primaryColor}` }}
                   src={getAvatarUrl(user?.avatar, fullName)}
                   alt={fullName}
                 >
@@ -225,10 +234,7 @@ const Settings = () => {
                       sx={{
                         p: 1,
                         borderRadius: 1.5,
-                        bgcolor:
-                          theme.palette.mode === "light"
-                            ? "rgba(0, 168, 132, 0.08)"
-                            : "rgba(0, 168, 132, 0.15)",
+                        bgcolor: `${primaryColor}18`,
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
@@ -248,6 +254,50 @@ const Settings = () => {
                   <CaretRight size={16} color="#94a3b8" />
                 </Stack>
               ))}
+
+              <Divider sx={{ my: 1 }} />
+
+              {/* Log Out Option */}
+              <Stack
+                direction="row"
+                alignItems="center"
+                justifyContent="space-between"
+                onClick={() => setOpenLogout(true)}
+                sx={{
+                  p: 1.5,
+                  borderRadius: 2,
+                  cursor: "pointer",
+                  transition: "all 0.2s ease-in-out",
+                  color: "error.main",
+                  "&:hover": {
+                    bgcolor: (theme) => `${theme.palette.error.main}14`,
+                  },
+                }}
+              >
+                <Stack direction="row" spacing={2} alignItems="center">
+                  <Box
+                    sx={{
+                      p: 1,
+                      borderRadius: 1.5,
+                      bgcolor: (theme) => `${theme.palette.error.main}18`,
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <SignOut size={22} color="#EF4444" weight="bold" />
+                  </Box>
+                  <Stack spacing={0.25}>
+                    <Typography variant="subtitle2" fontWeight={700} color="error.main">
+                      Log Out
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Sign out of your account on this device
+                    </Typography>
+                  </Stack>
+                </Stack>
+                <CaretRight size={16} color="#EF4444" />
+              </Stack>
             </Stack>
           </Stack>
         </Box>
@@ -289,8 +339,8 @@ const Settings = () => {
                 width: 72,
                 height: 72,
                 borderRadius: "50%",
-                bgcolor: "rgba(0, 168, 132, 0.12)",
-                color: "#00A884",
+                bgcolor: `${primaryColor}1F`,
+                color: primaryColor,
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
@@ -343,7 +393,7 @@ const Settings = () => {
                 <Button
                   fullWidth
                   variant="outlined"
-                  startIcon={<Image size={18} color="#00A884" />}
+                  startIcon={<Image size={18} color={primaryColor} />}
                   onClick={() => setOpenWallpaper(true)}
                   sx={{ py: 1.25, borderRadius: 2, textTransform: "none" }}
                 >
@@ -354,7 +404,7 @@ const Settings = () => {
                 <Button
                   fullWidth
                   variant="outlined"
-                  startIcon={<Lock size={18} color="#00A884" />}
+                  startIcon={<Lock size={18} color={primaryColor} />}
                   onClick={() => setOpenPrivacy(true)}
                   sx={{ py: 1.25, borderRadius: 2, textTransform: "none" }}
                 >
@@ -365,7 +415,7 @@ const Settings = () => {
                 <Button
                   fullWidth
                   variant="outlined"
-                  startIcon={<Key size={18} color="#00A884" />}
+                  startIcon={<Key size={18} color={primaryColor} />}
                   onClick={() => setOpenSecurity(true)}
                   sx={{ py: 1.25, borderRadius: 2, textTransform: "none" }}
                 >
@@ -376,7 +426,7 @@ const Settings = () => {
                 <Button
                   fullWidth
                   variant="outlined"
-                  startIcon={<Bell size={18} color="#00A884" />}
+                  startIcon={<Bell size={18} color={primaryColor} />}
                   onClick={() => setOpenNotifications(true)}
                   sx={{ py: 1.25, borderRadius: 2, textTransform: "none" }}
                 >
@@ -384,6 +434,29 @@ const Settings = () => {
                 </Button>
               </Grid>
             </Grid>
+
+            {/* Desktop Log Out Button */}
+            <Button
+              fullWidth
+              variant="outlined"
+              color="error"
+              startIcon={<SignOut size={18} weight="bold" />}
+              onClick={() => setOpenLogout(true)}
+              sx={{
+                mt: 3,
+                py: 1.25,
+                borderRadius: 2,
+                textTransform: "none",
+                fontWeight: 700,
+                borderColor: "error.main",
+                "&:hover": {
+                  bgcolor: (theme) => `${theme.palette.error.main}14`,
+                  borderColor: "error.dark",
+                },
+              }}
+            >
+              Log Out of Account
+            </Button>
 
             {/* Footer encryption message */}
             <Stack
@@ -448,6 +521,10 @@ const Settings = () => {
           handleClose={() => setOpenHelp(false)}
         />
       )}
+      <LogoutDialog
+        open={openLogout}
+        handleClose={() => setOpenLogout(false)}
+      />
     </>
   );
 };

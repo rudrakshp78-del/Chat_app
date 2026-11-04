@@ -31,6 +31,7 @@ import { useDispatch, useSelector } from "react-redux";
 import data from "@emoji-mart/data";
 import Picker from "@emoji-mart/react";
 import { CreateStatus } from "../../../redux/slices/status";
+import { showSnackbar } from "../../../redux/slices/app";
 
 // WhatsApp signature color and gradient presets
 const COLOR_PRESETS = [
@@ -136,32 +137,52 @@ const CreateStatusDialog = ({ open, handleClose, initialTab = 0 }) => {
 
   // Submit Status
   const handleSubmit = async () => {
-    if (tab === 0) {
-      // Text status
-      if (!content.trim()) return;
+    try {
+      if (tab === 0) {
+        // Text status
+        if (!content.trim()) {
+          dispatch(
+            showSnackbar({
+              severity: "warning",
+              message: "Please enter status text",
+            })
+          );
+          return;
+        }
 
-      await dispatch(
-        CreateStatus({
-          type: "text",
-          content: content.trim(),
-          background,
-          fontFamily: FONT_PRESETS[fontIndex].value,
-        })
-      );
-    } else {
-      // Photo status
-      if (!imagePreview) return;
+        await dispatch(
+          CreateStatus({
+            type: "text",
+            content: content.trim(),
+            background,
+            fontFamily: FONT_PRESETS[fontIndex].value,
+          })
+        );
+      } else {
+        // Photo status
+        if (!imagePreview) {
+          dispatch(
+            showSnackbar({
+              severity: "warning",
+              message: "Please select an image first",
+            })
+          );
+          return;
+        }
 
-      await dispatch(
-        CreateStatus({
-          type: "image",
-          media: imagePreview,
-          content: caption.trim(),
-        })
-      );
+        await dispatch(
+          CreateStatus({
+            type: "image",
+            media: imagePreview,
+            content: caption.trim(),
+          })
+        );
+      }
+
+      onClose();
+    } catch (err) {
+      console.error("Post status error:", err);
     }
-
-    onClose();
   };
 
   const isSubmitDisabled =

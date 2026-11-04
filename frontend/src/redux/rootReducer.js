@@ -13,8 +13,9 @@ const rootPersistConfig = {
   storage,
   keyPrefix: "redux-",
 
-  // Don't persist authentication or transient call dialog state
-  blacklist: ["auth", "audioCall", "videoCall"],
+  // Don't persist authentication, transient call dialog state, or heavy message/status payloads
+  // (Conversation sidebar list is cached separately via trackon_cached_conversations)
+  blacklist: ["auth", "audioCall", "videoCall", "conversation", "status"],
 };
 
 const rootReducer = combineReducers({

@@ -17,7 +17,6 @@ import cssStyles from "../../../utils/cssStyles";
 import { NAVBAR, defaultSettings } from "../../../config";
 //
 import Iconify from "../../Iconify";
-import Scrollbar from "../../Scrollbar";
 //
 import ToggleButton from "./ToggleButton";
 import SettingDirection from "./SettingDirection";
@@ -90,6 +89,14 @@ export default function SettingsDrawer() {
     setOpen(false);
   };
 
+  const handleReset = () => {
+    try {
+      localStorage.removeItem("presets_button_pos");
+      window.dispatchEvent(new Event("reset-presets-button-pos"));
+    } catch (_) {}
+    onResetSetting();
+  };
+
   return (
     <>
       <Backdrop
@@ -111,46 +118,49 @@ export default function SettingsDrawer() {
 
       <AnimatePresence>
         {open && (
-          <>
-            <RootStyle>
-              <Stack
-                direction="row"
-                alignItems="center"
-                justifyContent="space-between"
-                sx={{ py: 2, pr: 1, pl: 2.5 }}
-              >
-                <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
-                  Settings
-                </Typography>
+          <RootStyle key="settings-drawer">
+            <Stack
+              direction="row"
+              alignItems="center"
+              justifyContent="space-between"
+              sx={{ py: 2, pr: 1, pl: 2.5 }}
+            >
+              <Typography variant="subtitle1" sx={{ flexGrow: 1 }}>
+                Settings
+              </Typography>
 
-                <IconButton onClick={onResetSetting}>
-                  <Iconify icon={"ic:round-refresh"} width={20} height={20} />
-                </IconButton>
+              <IconButton onClick={handleReset} title="Reset">
+                <Iconify icon={"ic:round-refresh"} width={20} height={20} />
+              </IconButton>
 
-                <IconButton onClick={handleClose}>
-                  <Iconify icon={"eva:close-fill"} width={20} height={20} />
-                </IconButton>
+              <IconButton onClick={handleClose} title="Close">
+                <Iconify icon={"eva:close-fill"} width={20} height={20} />
+              </IconButton>
+            </Stack>
+
+            <Divider sx={{ borderStyle: "dashed" }} />
+
+            <Stack
+              spacing={3}
+              sx={{
+                p: 3,
+                flexGrow: 1,
+                overflowY: "auto",
+              }}
+            >
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle2">Direction</Typography>
+                <SettingDirection />
               </Stack>
 
-              <Divider sx={{ borderStyle: "dashed" }} />
+              <Stack spacing={1.5}>
+                <Typography variant="subtitle2">Presets</Typography>
+                <SettingColorPresets />
+              </Stack>
 
-              <Scrollbar sx={{ flexGrow: 1 }}>
-                <Stack spacing={3} sx={{ p: 3 }}>
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle2">Direction</Typography>
-                    <SettingDirection />
-                  </Stack>
-
-                  <Stack spacing={1.5}>
-                    <Typography variant="subtitle2">Presets</Typography>
-                    <SettingColorPresets />
-                  </Stack>
-
-                  <SettingFullscreen />
-                </Stack>
-              </Scrollbar>
-            </RootStyle>
-          </>
+              <SettingFullscreen />
+            </Stack>
+          </RootStyle>
         )}
       </AnimatePresence>
     </>

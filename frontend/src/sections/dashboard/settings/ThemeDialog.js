@@ -66,8 +66,8 @@ const ThemeDialog = ({ open, handleClose }) => {
             sx={{
               p: 0.8,
               borderRadius: 1.5,
-              bgcolor: "rgba(0, 168, 132, 0.12)",
-              color: "#00A884",
+              bgcolor: `${theme.palette.primary.main}1F`,
+              color: theme.palette.primary.main,
               display: "flex",
             }}
           >
@@ -120,7 +120,7 @@ const ThemeDialog = ({ open, handleClose }) => {
                       : theme.palette.divider,
                   bgcolor:
                     themeMode === "light"
-                      ? "rgba(0, 168, 132, 0.08)"
+                      ? `${theme.palette.primary.main}14`
                       : "transparent",
                   transition: "all 0.2s ease-in-out",
                   "&:hover": {
@@ -154,7 +154,7 @@ const ThemeDialog = ({ open, handleClose }) => {
                       : theme.palette.divider,
                   bgcolor:
                     themeMode === "dark"
-                      ? "rgba(0, 168, 132, 0.15)"
+                      ? `${theme.palette.primary.main}24`
                       : "transparent",
                   transition: "all 0.2s ease-in-out",
                   "&:hover": {

@@ -45,8 +45,8 @@ const NotificationDialog = ({ open, handleClose }) => {
   const handleSendTestNotification = async () => {
     setTestSent(true);
     await showOutsideNotification({
-      title: "Chat App Notification",
-      body: "Incoming message notifications outside the chat are working!",
+      title: "Trackon 🔔🎵",
+      body: "Incoming message notifications on your notification bar with sound are working!",
       icon: "/logo192.png",
     });
     setTimeout(() => setTestSent(false), 3000);
@@ -100,13 +100,13 @@ const NotificationDialog = ({ open, handleClose }) => {
             <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Stack spacing={0.25}>
                 <Typography variant="subtitle2" fontWeight="bold">
-                  Desktop & Outside Alerts
+                  Notification Bar & System Alerts
                 </Typography>
                 <Typography variant="caption" color="text.secondary">
                   {isGranted
-                    ? "Allowed • You will receive alerts outside the chat"
+                    ? "Allowed • Alerts show on status bar with sound"
                     : isDenied
-                    ? "Blocked by browser settings"
+                    ? "Blocked by system settings"
                     : "Not yet enabled"}
                 </Typography>
               </Stack>

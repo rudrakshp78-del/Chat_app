@@ -25,6 +25,7 @@ import {
   FetchUsers,
 } from "../../redux/slices/app";
 import { isFriendPinned } from "../../utils/chatSettingsHelpers";
+import ProfileMenu from "../../layouts/dashboard/ProfileMenu";
 
 const FAKE_GROUP_NAMES = new Set([
   "alex johnson",
@@ -44,7 +45,11 @@ const loadRealGroups = () => {
     );
     if (!Array.isArray(raw)) return [];
     const filtered = raw.filter(
-      (g) => g && g.name && !FAKE_GROUP_NAMES.has(g.name.trim().toLowerCase())
+      (g) =>
+        g &&
+        g.name &&
+        (!FAKE_GROUP_NAMES.has(g.name.trim().toLowerCase()) ||
+          (typeof g.id === "string" && g.id.startsWith("group_")))
     );
     if (filtered.length !== raw.length) {
       localStorage.setItem("trackon_custom_groups", JSON.stringify(filtered));
@@ -120,12 +125,15 @@ const Group = () => {
           }}
         >
           <Stack
-            p={{ xs: 2, sm: 3 }}
-            spacing={2}
+            pt={{ xs: 0.75, sm: 1.5 }}
+            px={{ xs: 1.75, sm: 2.5 }}
+            pb={0}
+            spacing={{ xs: 1.25, sm: 2 }}
             sx={{ height: "100%", flex: 1, minHeight: 0 }}
           >
-            <Stack>
+            <Stack direction="row" alignItems="center" justifyContent="space-between">
               <Typography variant="h5">Groups</Typography>
+              <ProfileMenu />
             </Stack>
             <Stack sx={{ width: "100%" }}>
               <Search>

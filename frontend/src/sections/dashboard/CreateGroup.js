@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import * as Yup from "yup";
 import {
   Button,
@@ -31,6 +31,7 @@ const Transition = React.forwardRef(function Transition(props, ref) {
 
 const CreateGroupForm = ({ handleClose }) => {
   const dispatch = useDispatch();
+  const [memberInput, setMemberInput] = useState("");
   const {
     all_users = [],
     friends = [],
@@ -92,8 +93,11 @@ const CreateGroupForm = ({ handleClose }) => {
   }, [all_users, friends, users, conversations, user]);
 
   const NewGroupSchema = Yup.object().shape({
-    title: Yup.string().required("Title is required"),
-    members: Yup.array().min(1, "Please select at least 1 member"),
+    title: Yup.string()
+      .trim()
+      .required("Group title is required")
+      .max(64, "Group title cannot exceed 64 characters"),
+    members: Yup.array().nullable(),
   });
 
   const defaultValues = {
@@ -106,15 +110,42 @@ const CreateGroupForm = ({ handleClose }) => {
     defaultValues,
   });
 
-  const { reset, handleSubmit } = methods;
+  const {
+    reset,
+    handleSubmit,
+    formState: { isSubmitting },
+  } = methods;
 
   const onSubmit = async (data) => {
     try {
+      const title = (data?.title || "").trim();
+      if (!title) {
+        dispatch(
+          showSnackbar({
+            severity: "warning",
+            message: "Please enter a group title",
+          })
+        );
+        return;
+      }
+
+      // Collect members: from array + any pending text user typed without hitting Enter
+      let membersList = Array.isArray(data.members) ? [...data.members] : [];
+      if (memberInput && memberInput.trim()) {
+        const pending = memberInput.trim();
+        if (!membersList.includes(pending)) {
+          membersList.push(pending);
+        }
+      }
+
       const newGroup = {
         id: `group_${Date.now()}`,
-        img: getMockAvatar(data.title),
-        name: data.title.trim(),
-        msg: `Members: ${data.members.join(", ")}`,
+        img: getMockAvatar(title),
+        name: title,
+        msg:
+          membersList.length > 0
+            ? `Members: ${membersList.join(", ")}`
+            : "Group created",
         time: new Date().toLocaleTimeString([], {
           hour: "2-digit",
           minute: "2-digit",
@@ -123,38 +154,62 @@ const CreateGroupForm = ({ handleClose }) => {
         pinned: false,
         online: true,
       };
+
       const existing = JSON.parse(
         localStorage.getItem("trackon_custom_groups") || "[]"
       );
-      localStorage.setItem(
-        "trackon_custom_groups",
-        JSON.stringify([newGroup, ...existing])
-      );
+      const updated = [newGroup, ...(Array.isArray(existing) ? existing : [])];
+      localStorage.setItem("trackon_custom_groups", JSON.stringify(updated));
+
       window.dispatchEvent(new CustomEvent("groups_updated"));
       dispatch(
         showSnackbar({
           severity: "success",
-          message: `Group "${data.title.trim()}" created!`,
+          message: `Group "${title}" created successfully!`,
         })
       );
       reset();
+      setMemberInput("");
       handleClose();
     } catch (error) {
-      console.error(error);
+      console.error("Create group error:", error);
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message: "Failed to create group. Please try again.",
+        })
+      );
     }
   };
 
+  const onError = (errors) => {
+    const errorMsg =
+      errors.title?.message ||
+      errors.members?.message ||
+      "Please enter a valid group title";
+    dispatch(showSnackbar({ severity: "warning", message: errorMsg }));
+  };
+
   return (
-    <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit)}>
+    <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit, onError)}>
       <Stack spacing={3} sx={{ pt: 1 }}>
-        <RHFTextField name="title" label="Group Title" />
+        <RHFTextField
+          name="title"
+          label="Group Title"
+          placeholder="e.g. My Awesome Group"
+          autoFocus
+        />
         <RHFAutocomplete
           name="members"
-          label="Members"
+          label="Members (optional)"
           placeholder="Select or type members..."
           multiple
           freeSolo
           options={memberOptions}
+          inputValue={memberInput}
+          onInputChange={(event, newInputValue) => {
+            setMemberInput(newInputValue);
+          }}
           ChipProps={{ size: "medium" }}
         />
         <Stack
@@ -164,7 +219,12 @@ const CreateGroupForm = ({ handleClose }) => {
           justifyContent={"end"}
         >
           <Button onClick={handleClose}>Cancel</Button>
-          <Button type="submit" variant="contained">
+          <Button
+            type="submit"
+            variant="contained"
+            disabled={isSubmitting}
+            sx={{ px: 3, fontWeight: 600 }}
+          >
             Create
           </Button>
         </Stack>

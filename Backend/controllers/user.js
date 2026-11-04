@@ -39,19 +39,114 @@ exports.updateMe = async (req, res, next) => {
   }
 };
 
+const inFlightConversationFetches = new Map();
+
+const fetchDirectConversationsForUser = async (currentUserId) => {
+  if (!currentUserId || !mongoose.Types.ObjectId.isValid(currentUserId)) {
+    return [];
+  }
+
+  const uidStr = currentUserId.toString();
+  if (inFlightConversationFetches.has(uidStr)) {
+    return inFlightConversationFetches.get(uidStr);
+  }
+
+  const promise = (async () => {
+    const existing_conversations = await OneToOneMessage.find({
+      participants: { $all: [uidStr] },
+    })
+      .select("-messages.file")
+      .populate(
+        "participants",
+        "firstName lastName _id email status avatar about links"
+      )
+      .lean();
+
+    // Filter out messages that were deleted for this user
+    return existing_conversations
+      .map((convObj) => {
+        const allMsgs = Array.isArray(convObj.messages)
+          ? convObj.messages.filter((msg) => {
+              if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
+                return !msg.deleted_for.some(
+                  (uid) => (uid?._id || uid)?.toString() === uidStr
+                );
+              }
+              return true;
+            })
+          : [];
+
+        const lastMessage =
+          allMsgs.length > 0 ? allMsgs[allMsgs.length - 1] : null;
+        const unreadCount = allMsgs.filter(
+          (m) =>
+            (m.to?._id || m.to)?.toString() === uidStr &&
+            !m.seen &&
+            m.status !== "seen"
+        ).length;
+
+        return {
+          ...convObj,
+          last_message: lastMessage,
+          unread_count: unreadCount,
+          messages: allMsgs.slice(-15),
+        };
+      })
+      .filter((conv) => {
+        // If user deleted this chat and there are no messages left for this user, do not show in sidebar
+        const isChatDeletedForUser =
+          conv.deleted_for &&
+          Array.isArray(conv.deleted_for) &&
+          conv.deleted_for.some(
+            (uid) => (uid?._id || uid)?.toString() === uidStr
+          );
+        if (
+          isChatDeletedForUser &&
+          (!conv.messages || conv.messages.length === 0)
+        ) {
+          return false;
+        }
+        return true;
+      });
+  })();
+
+  inFlightConversationFetches.set(uidStr, promise);
+  try {
+    return await promise;
+  } finally {
+    inFlightConversationFetches.delete(uidStr);
+  }
+};
+
+exports.fetchDirectConversationsForUser = fetchDirectConversationsForUser;
+
+exports.getDirectConversations = async (req, res) => {
+  try {
+    const conversations = await fetchDirectConversationsForUser(req.user._id);
+    res.status(200).json({
+      status: "success",
+      data: conversations,
+    });
+  } catch (err) {
+    console.error("getDirectConversations error:", err);
+    res.status(500).json({
+      status: "error",
+      message: err.message,
+    });
+  }
+};
+
 exports.getUsers = async (req, res, next) => {
   try {
-    const all_users = await User.find({
+    const friendIds = Array.isArray(req.user.friends) ? req.user.friends : [];
+    const excludeIds = [...friendIds, req.user._id];
+
+    const remaining_users = await User.find({
       verified: true,
-    }).select("firstName lastName _id status avatar email");
-
-    const this_user = req.user;
-
-    const remaining_users = all_users.filter(
-      (user) =>
-        !this_user.friends.some((f) => f.toString() === user._id.toString()) &&
-        user._id.toString() !== req.user._id.toString()
-    );
+      _id: { $nin: excludeIds },
+    })
+      .select("firstName lastName _id status avatar email")
+      .lean();
 
     res.status(200).json({
       status: "success",
@@ -72,7 +167,9 @@ exports.getAllVerifiedUsers = async (req, res, next) => {
     const users = await User.find({
       verified: true,
       _id: { $ne: req.user._id },
-    }).select("firstName lastName _id status avatar email");
+    })
+      .select("firstName lastName _id status avatar email")
+      .lean();
 
     res.status(200).json({
       status: "success",
@@ -91,7 +188,8 @@ exports.getAllVerifiedUsers = async (req, res, next) => {
 exports.getRequests = async (req, res, next) => {
   try {
     const requests = await FriendRequest.find({ recipient: req.user._id })
-      .populate("sender", "_id firstName lastName status avatar");
+      .populate("sender", "_id firstName lastName status avatar")
+      .lean();
 
     res.status(200).json({
       status: "success",
@@ -109,14 +207,14 @@ exports.getRequests = async (req, res, next) => {
 
 exports.getfriends = async (req, res, next) => {
   try {
-    const this_user = await User.findById(req.user._id).populate(
-      "friends",
-      "_id firstName lastName status avatar",
-    );
+    const this_user = await User.findById(req.user._id)
+      .select("friends")
+      .populate("friends", "_id firstName lastName status avatar")
+      .lean();
 
     res.status(200).json({
       status: "success",
-      data: this_user.friends || [],
+      data: this_user?.friends || [],
       message: "Friends found successfully",
     });
   } catch (err) {
@@ -274,7 +372,8 @@ exports.generateZegoToken = async (req, res, next) => {
     const effectiveTimeInSeconds = 3600;
     const payload = "";
 
-    const userIdentifier = (userId || req.user._id).toString();
+    // SECURITY: Only the authenticated user can generate their own call token
+    const userIdentifier = req.user._id.toString();
 
     const token = generateToken04(
       appId,

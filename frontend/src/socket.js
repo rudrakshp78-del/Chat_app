@@ -1,19 +1,27 @@
 import io from "socket.io-client";
 import { BASE_URL } from "./config";
 
+const getSavedToken = () => {
+  return typeof window !== "undefined"
+    ? window.localStorage.getItem("token") || window.localStorage.getItem("accessToken")
+    : null;
+};
+
 const initialUserId =
   typeof window !== "undefined" ? window.localStorage.getItem("user_id") : null;
-const initialToken =
-  typeof window !== "undefined" ? window.localStorage.getItem("token") : null;
+const initialToken = getSavedToken();
 
 export const socket = io(BASE_URL, {
   autoConnect: false,
-  transports: ["websocket", "polling"],
+  transports: ["polling", "websocket"],
+  upgrade: true,
+  timeout: 10000,
   reconnection: true,
   reconnectionAttempts: Infinity,
   reconnectionDelay: 500,
   reconnectionDelayMax: 3000,
   query: initialUserId ? { user_id: initialUserId } : {},
+  auth: initialToken ? { token: initialToken } : {},
 });
 
 export const connectSocket = (user_id) => {
@@ -22,8 +30,13 @@ export const connectSocket = (user_id) => {
     return;
   }
 
+  const token = getSavedToken();
+
   socket.io.opts.query = {
     user_id,
+  };
+  socket.io.opts.auth = {
+    token,
   };
 
   if (!socket.connected) {

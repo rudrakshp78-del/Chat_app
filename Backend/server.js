@@ -13,6 +13,7 @@ if (fs.existsSync(envPath)) {
   require("dotenv").config();
 }
 
+const jwt = require("jsonwebtoken");
 const { Server } = require("socket.io");
 const sgMail = require("@sendgrid/mail");
 
@@ -22,6 +23,7 @@ const FriendRequest = require("./models/friendRequest");
 const OneToOneMessage = require("./models/OneToOneMessage");
 const AudioCall = require("./models/audioCall");
 const VideoCall = require("./models/videoCall");
+const { fetchDirectConversationsForUser } = require("./controllers/user");
 
 // ================================
 // SENDGRID
@@ -142,107 +144,56 @@ async function startServer() {
 
         socket.user_id = user_id ? user_id.toString() : null;
 
+        let initializedUserId = null;
+
         const deliverPendingMessages = async (targetUserId) => {
           try {
-            if (!targetUserId) return;
+            if (!targetUserId || !mongoose.Types.ObjectId.isValid(targetUserId)) {
+              return;
+            }
             const targetIdStr = targetUserId.toString();
+            const targetObjId = new mongoose.Types.ObjectId(targetIdStr);
+
             const pendingChats = await OneToOneMessage.find({
-              participants: targetIdStr,
-              "messages.to": targetIdStr,
-              "messages.status": "sent",
-            });
+              participants: targetObjId,
+              messages: {
+                $elemMatch: {
+                  to: targetObjId,
+                  status: "sent",
+                },
+              },
+            })
+              .select("_id participants")
+              .lean();
+
+            if (!pendingChats.length) return;
+
+            const chatIds = pendingChats.map((c) => c._id);
+
+            await OneToOneMessage.updateMany(
+              { _id: { $in: chatIds } },
+              { $set: { "messages.$[elem].status": "delivered" } },
+              {
+                arrayFilters: [
+                  { "elem.to": targetObjId, "elem.status": "sent" },
+                ],
+              }
+            );
 
             for (const chat of pendingChats) {
-              let updated = false;
-              chat.messages.forEach((msg) => {
-                if (
-                  (msg.to?._id || msg.to)?.toString() === targetIdStr &&
-                  msg.status === "sent"
-                ) {
-                  msg.status = "delivered";
-                  updated = true;
+              (chat.participants || []).forEach((pId) => {
+                const pStr = (pId?._id || pId)?.toString();
+                if (pStr && pStr !== targetIdStr) {
+                  io.to(pStr).emit("messages_delivered", {
+                    conversation_id: chat._id,
+                    user_id: targetIdStr,
+                  });
                 }
               });
-
-              if (updated) {
-                await chat.save({ validateModifiedOnly: true });
-                chat.participants.forEach((pId) => {
-                  const pStr = (pId?._id || pId)?.toString();
-                  if (pStr !== targetIdStr) {
-                    io.to(pStr).emit("messages_delivered", {
-                      conversation_id: chat._id,
-                      user_id: targetIdStr,
-                    });
-                  }
-                });
-              }
             }
           } catch (err) {
             console.error("deliverPendingMessages error:", err);
           }
-        };
-
-        const fetchDirectConversationsForUser = async (currentUserId) => {
-          if (!currentUserId || !mongoose.Types.ObjectId.isValid(currentUserId)) {
-            return [];
-          }
-
-          const existing_conversations = await OneToOneMessage.find({
-            participants: { $all: [currentUserId] },
-          })
-            .select("-messages.file")
-            .populate(
-              "participants",
-              "firstName lastName _id email status avatar about links"
-            )
-            .lean();
-
-          // Filter out messages that were deleted for this user
-          return existing_conversations
-            .map((convObj) => {
-              const allMsgs = Array.isArray(convObj.messages)
-                ? convObj.messages.filter((msg) => {
-                    if (msg.deleted_for && Array.isArray(msg.deleted_for)) {
-                      return !msg.deleted_for.some(
-                        (uid) => (uid?._id || uid)?.toString() === currentUserId
-                      );
-                    }
-                    return true;
-                  })
-                : [];
-
-              const lastMessage =
-                allMsgs.length > 0 ? allMsgs[allMsgs.length - 1] : null;
-              const unreadCount = allMsgs.filter(
-                (m) =>
-                  (m.to?._id || m.to)?.toString() === currentUserId &&
-                  !m.seen &&
-                  m.status !== "seen"
-              ).length;
-
-              return {
-                ...convObj,
-                last_message: lastMessage,
-                unread_count: unreadCount,
-                messages: allMsgs.slice(-30),
-              };
-            })
-            .filter((conv) => {
-              // If user deleted this chat and there are no messages left for this user, do not show in sidebar
-              const isChatDeletedForUser =
-                conv.deleted_for &&
-                Array.isArray(conv.deleted_for) &&
-                conv.deleted_for.some(
-                  (uid) => (uid?._id || uid)?.toString() === currentUserId
-                );
-              if (
-                isChatDeletedForUser &&
-                (!conv.messages || conv.messages.length === 0)
-              ) {
-                return false;
-              }
-              return true;
-            });
         };
 
         // Join personal room synchronously so all socket.on listeners below register immediately without awaiting DB
@@ -250,6 +201,7 @@ async function startServer() {
           const uidStr = user_id.toString();
           socket.join(uidStr);
           if (mongoose.Types.ObjectId.isValid(uidStr)) {
+            initializedUserId = uidStr;
             User.findByIdAndUpdate(uidStr, {
               socket_id,
               status: "Online",
@@ -273,6 +225,10 @@ async function startServer() {
             if (uid && mongoose.Types.ObjectId.isValid(uid)) {
               socket.user_id = uid;
               socket.join(uid);
+              if (initializedUserId === uid) {
+                return;
+              }
+              initializedUserId = uid;
               User.findByIdAndUpdate(uid, {
                 socket_id: socket.id,
                 status: "Online",
@@ -614,32 +570,44 @@ async function startServer() {
           try {
             const { conversation_id } = data || {};
             const currentUserId = (socket.user_id || user_id || data?.user_id)?.toString();
-            if (!conversation_id || !currentUserId) return;
+            if (
+              !conversation_id ||
+              !currentUserId ||
+              !mongoose.Types.ObjectId.isValid(conversation_id) ||
+              !mongoose.Types.ObjectId.isValid(currentUserId)
+            ) {
+              return;
+            }
 
-            const chat = await OneToOneMessage.findById(conversation_id);
+            const readerObjId = new mongoose.Types.ObjectId(currentUserId);
+            const chat = await OneToOneMessage.findById(conversation_id)
+              .select("_id participants")
+              .lean();
             if (!chat) return;
 
-            let hasUnseen = false;
-            chat.messages.forEach((msg) => {
-              const msgToStr = (msg.to?._id || msg.to)?.toString();
-              if (
-                msgToStr === currentUserId &&
-                !msg.seen &&
-                msg.status !== "seen"
-              ) {
-                msg.seen = true;
-                msg.status = "seen";
-                msg.seen_at = new Date();
-                hasUnseen = true;
+            const result = await OneToOneMessage.updateOne(
+              { _id: conversation_id },
+              {
+                $set: {
+                  "messages.$[elem].seen": true,
+                  "messages.$[elem].status": "seen",
+                  "messages.$[elem].seen_at": new Date(),
+                },
+              },
+              {
+                arrayFilters: [
+                  {
+                    "elem.to": readerObjId,
+                    "elem.seen": { $ne: true },
+                  },
+                ],
               }
-            });
+            );
 
-            if (hasUnseen) {
-              await chat.save({ validateModifiedOnly: true });
-
-              chat.participants.forEach((pId) => {
+            if (result.modifiedCount > 0) {
+              (chat.participants || []).forEach((pId) => {
                 const pStr = (pId?._id || pId)?.toString();
-                if (pStr !== currentUserId) {
+                if (pStr && pStr !== currentUserId) {
                   io.to(pStr).emit("messages_seen", {
                     conversation_id: chat._id,
                     reader_id: currentUserId,
@@ -663,8 +631,8 @@ async function startServer() {
           try {
             console.log("Received text message:", data);
 
-            // data: {to, from, message, conversation_id, type, reply} 
-            let { to, from, message, conversation_id, type, reply } = data;
+            // data: {to, from, message, conversation_id, type, reply, temp_id}
+            let { to, from, message, conversation_id, type, reply, temp_id } = data;
             from = (from || socket.user_id || user_id)?.toString();
 
             let chat = null;
@@ -684,8 +652,11 @@ async function startServer() {
               return;
             }
 
-            const to_user = await User.findById(to).select("socket_id status");
-            const from_user = await User.findById(from).select("socket_id");
+            // Fetch to_user and from_user in parallel for maximum speed
+            const [to_user, from_user] = await Promise.all([
+              User.findById(to).select("firstName lastName avatar socket_id status"),
+              User.findById(from).select("firstName lastName avatar socket_id status"),
+            ]);
 
             const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
@@ -723,48 +694,43 @@ async function startServer() {
             chat.messages.push(new_message);
             await chat.save({ validateModifiedOnly: true });
 
-            const saved_message = chat.messages[chat.messages.length - 1];
+            const raw_saved = chat.messages[chat.messages.length - 1];
+            const saved_message = raw_saved.toObject ? raw_saved.toObject() : JSON.parse(JSON.stringify(raw_saved));
+            if (temp_id) {
+              saved_message.temp_id = temp_id;
+            }
 
-            // Keep sender's socket_id up-to-date
+            const senderInfo = {
+              _id: from,
+              name: `${from_user?.firstName || ""} ${from_user?.lastName || ""}`.trim() || "User",
+              avatar: from_user?.avatar || "",
+            };
+
+            const payload = {
+              conversation_id: chat._id,
+              message: saved_message,
+              sender: senderInfo,
+            };
+
+            // EMIT IMMEDIATELY TO SENDER AND RECIPIENT WITHOUT DELAY
+            socket.emit("new_message", payload);
+            io.to(from.toString()).emit("new_message", payload);
+            io.to(to.toString()).emit("new_message", payload);
+
+            if (to_user?.socket_id) {
+              io.to(to_user.socket_id).emit("new_message", payload);
+            }
+
+            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
+              io.to(from_user.socket_id).emit("new_message", payload);
+            }
+
+            // Keep sender's socket_id up-to-date asynchronously in background
             if (from) {
-              await User.findByIdAndUpdate(from, {
+              User.findByIdAndUpdate(from, {
                 socket_id: socket.id,
                 status: "Online",
-              });
-            }
-
-            // emit new_message -> directly to sender's active socket
-            socket.emit("new_message", {
-              conversation_id: chat._id,
-              message: saved_message,
-            });
-
-            // emit new_message -> to sender's room
-            io.to(from.toString()).emit("new_message", {
-              conversation_id: chat._id,
-              message: saved_message,
-            });
-
-            // emit new_message -> to recipient user room
-            io.to(to.toString()).emit("new_message", {
-              conversation_id: chat._id,
-              message: saved_message,
-            });
-
-            // emit new_message -> to sender's other sockets (if any)
-            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
-              io.to(from_user.socket_id).emit("new_message", {
-                conversation_id: chat._id,
-                message: saved_message,
-              });
-            }
-
-            // emit new_message -> to recipient user socket_id (if any)
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", {
-                conversation_id: chat._id,
-                message: saved_message,
-              });
+              }).catch((e) => console.error("Update sender status error:", e));
             }
           } catch (err) {
             console.error("text_message error:", err);
@@ -775,8 +741,8 @@ async function startServer() {
           try {
             console.log("Received file message:", data?.type, data?.fileName);
 
-            // data: {to, from, text, file, url, fileName, song, conversation_id, type}
-            let { to, from, text, file, url, fileName, song, conversation_id, type } = data;
+            // data: {to, from, text, file, url, fileName, song, conversation_id, type, temp_id}
+            let { to, from, text, file, url, fileName, song, conversation_id, type, temp_id } = data;
             from = (from || socket.user_id || user_id)?.toString();
 
             let chat = null;
@@ -796,23 +762,22 @@ async function startServer() {
               return;
             }
 
-            const to_user = await User.findById(to).select("socket_id status");
-            const from_user = await User.findById(from).select("socket_id");
+            // Fetch to_user and from_user in parallel for maximum speed
+            const [to_user, from_user] = await Promise.all([
+              User.findById(to).select("firstName lastName avatar socket_id status"),
+              User.findById(from).select("firstName lastName avatar socket_id status"),
+            ]);
 
             const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
-
-            const normalizedType =
-              type === "Doc" || type === "Document"
-                ? "Document"
-                : type || "Media";
 
             const new_message = {
               to,
               from,
-              type: normalizedType,
+              type: type || "Media",
               text: text || "",
-              file: url || (typeof file === "string" ? file : file?.name || ""),
-              fileName: fileName || (typeof file === "object" ? file?.name : ""),
+              file: file || url || "",
+              fileName: fileName || "",
+              duration: data.duration || 0,
               song: song || undefined,
               status: isRecipientOnline ? "delivered" : "sent",
               seen: false,
@@ -842,47 +807,43 @@ async function startServer() {
             chat.messages.push(new_message);
             await chat.save({ validateModifiedOnly: true });
 
-            const saved_message = chat.messages[chat.messages.length - 1];
-
-            // Keep sender's socket_id up-to-date
-            if (from) {
-              await User.findByIdAndUpdate(from, {
-                socket_id: socket.id,
-                status: "Online",
-              });
+            const raw_saved = chat.messages[chat.messages.length - 1];
+            const saved_message = raw_saved.toObject ? raw_saved.toObject() : JSON.parse(JSON.stringify(raw_saved));
+            if (temp_id) {
+              saved_message.temp_id = temp_id;
             }
 
-            // emit new_message -> directly to sender's active socket
-            socket.emit("new_message", {
+            const senderInfo = {
+              _id: from,
+              name: `${from_user?.firstName || ""} ${from_user?.lastName || ""}`.trim() || "User",
+              avatar: from_user?.avatar || "",
+            };
+
+            const payload = {
               conversation_id: chat._id,
               message: saved_message,
-            });
+              sender: senderInfo,
+            };
 
-            // emit new_message -> to sender's room
-            io.to(from.toString()).emit("new_message", {
-              conversation_id: chat._id,
-              message: saved_message,
-            });
-
-            // emit new_message -> to recipient user room
-            io.to(to.toString()).emit("new_message", {
-              conversation_id: chat._id,
-              message: saved_message,
-            });
-
-            // emit new_message -> to sender's other sockets (if any)
-            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
-              io.to(from_user.socket_id).emit("new_message", {
-                conversation_id: chat._id,
-                message: saved_message,
-              });
-            }
+            // EMIT IMMEDIATELY TO SENDER AND RECIPIENT WITHOUT DELAY
+            socket.emit("new_message", payload);
+            io.to(from.toString()).emit("new_message", payload);
+            io.to(to.toString()).emit("new_message", payload);
 
             if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", {
-                conversation_id: chat._id,
-                message: saved_message,
-              });
+              io.to(to_user.socket_id).emit("new_message", payload);
+            }
+
+            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
+              io.to(from_user.socket_id).emit("new_message", payload);
+            }
+
+            // Keep sender's socket_id up-to-date asynchronously in background
+            if (from) {
+              User.findByIdAndUpdate(from, {
+                socket_id: socket.id,
+                status: "Online",
+              }).catch((e) => console.error("Update sender status error:", e));
             }
           } catch (err) {
             console.error("file_message error:", err);

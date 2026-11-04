@@ -1,4 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
+import axios from "../../utils/axios";
 import getAvatarUrl from "../../utils/getAvatarUrl";
 import { fChatListTime } from "../../utils/formatTime";
 
@@ -20,15 +21,24 @@ const getInitialCachedConversations = () => {
   }
 };
 
+let saveCacheTimer = null;
 const saveCachedConversations = (conversations) => {
   if (typeof window === "undefined") return;
   try {
     const uid = window.localStorage.getItem("user_id");
     if (!uid || !Array.isArray(conversations)) return;
-    window.localStorage.setItem(
-      `trackon_cached_conversations_${uid}`,
-      JSON.stringify(conversations)
-    );
+    const snapshot = conversations.slice();
+    if (saveCacheTimer) clearTimeout(saveCacheTimer);
+    saveCacheTimer = setTimeout(() => {
+      try {
+        window.localStorage.setItem(
+          `trackon_cached_conversations_${uid}`,
+          JSON.stringify(snapshot)
+        );
+      } catch {
+        // Ignore storage quota errors
+      }
+    }, 100);
   } catch {
     // Ignore storage quota errors
   }
@@ -45,6 +55,7 @@ const formatMessageItem = (el, current_user_id) => {
     message: el.text !== undefined ? el.text : el.message,
     file: el.file,
     fileName: el.fileName || "",
+    duration: el.duration || 0,
     song: el.song || null,
     reply: el.reply || "",
     starred: !!el.starred,
@@ -64,6 +75,10 @@ const getMessagePreview = (lastMsg, lastMsgOutgoing) => {
   if (!lastMsg) return "No messages yet";
   if (lastMsg.deleted) {
     return lastMsgOutgoing ? "You deleted this message" : "This message was deleted";
+  }
+  const msgType = (lastMsg.type || lastMsg.subtype || "").toLowerCase();
+  if (msgType === "voice" || msgType === "audio") {
+    return "🎤 Voice message";
   }
   if (lastMsg.text) return lastMsg.text;
   if (lastMsg.fileName) return `📎 ${lastMsg.fileName}`;
@@ -340,7 +355,7 @@ const slice = createSlice({
       }
     },
     addDirectMessage(state, action) {
-      const msg = action.payload.message;
+      const msg = action.payload?.message || action.payload;
       if (!msg) return;
       const formattedMsg = {
         ...msg,
@@ -348,10 +363,20 @@ const slice = createSlice({
         seen: Boolean(msg.seen || msg.status === "seen"),
         created_at: msg.created_at || msg.createdAt || new Date().toISOString(),
       };
-      const exists = state.direct_chat.current_messages.some(
-        (m) => m.id && formattedMsg.id && m.id === formattedMsg.id
+      const existsIndex = state.direct_chat.current_messages.findIndex(
+        (m) =>
+          (m.id && formattedMsg.id && String(m.id) === String(formattedMsg.id)) ||
+          (formattedMsg.temp_id && m.temp_id && m.temp_id === formattedMsg.temp_id) ||
+          (formattedMsg.temp_id && String(m.id) === String(formattedMsg.temp_id))
       );
-      if (!exists) {
+      if (existsIndex !== -1) {
+        state.direct_chat.current_messages[existsIndex] = {
+          ...state.direct_chat.current_messages[existsIndex],
+          ...formattedMsg,
+          id: formattedMsg.id || formattedMsg._id || state.direct_chat.current_messages[existsIndex].id,
+          status: formattedMsg.status || "sent",
+        };
+      } else {
         state.direct_chat.current_messages.push(formattedMsg);
       }
       const convId = (
@@ -407,7 +432,7 @@ const slice = createSlice({
       }
     },
     updateConversationOnNewMessage(state, action) {
-      const { conversation_id, message, is_current } = action.payload;
+      const { conversation_id, message, sender, is_current } = action.payload;
       if (!conversation_id || !message) return;
 
       const current_user_id = window.localStorage.getItem("user_id");
@@ -415,12 +440,15 @@ const slice = createSlice({
       const previewText = getMessagePreview(message, isOutgoing);
       const msgTime = message.created_at || message.createdAt || new Date().toISOString();
 
-      state.direct_chat.conversations = state.direct_chat.conversations.map((c) => {
+      let targetConv = null;
+      const otherConvs = [];
+
+      (state.direct_chat.conversations || []).forEach((c) => {
         if (
           c.id?.toString() === conversation_id?.toString() ||
           c._id?.toString() === conversation_id?.toString()
         ) {
-          return {
+          targetConv = {
             ...c,
             msg: previewText,
             raw_time: msgTime,
@@ -429,9 +457,31 @@ const slice = createSlice({
             last_msg_outgoing: isOutgoing,
             last_msg_status: message.status || (message.seen ? "seen" : "sent"),
           };
+        } else {
+          otherConvs.push(c);
         }
-        return c;
       });
+
+      if (!targetConv) {
+        targetConv = {
+          id: conversation_id,
+          _id: conversation_id,
+          user_id: (sender?._id || message.from?._id || message.from)?.toString(),
+          name: sender?.name || "New Message",
+          online: true,
+          img: sender?.avatar || "",
+          msg: previewText,
+          raw_time: msgTime,
+          time: fChatListTime(msgTime),
+          unread: is_current ? 0 : 1,
+          last_msg_outgoing: isOutgoing,
+          last_msg_status: message.status || (message.seen ? "seen" : "sent"),
+          pinned: false,
+        };
+      }
+
+      // Move latest updated chat to top of conversations list
+      state.direct_chat.conversations = [targetConv, ...otherConvs];
       saveCachedConversations(state.direct_chat.conversations);
 
       if (
@@ -652,6 +702,43 @@ export const FetchDirectConversations = ({ conversations }) => {
         conversations,
       }),
     );
+  };
+};
+
+let inFlightHttpFetch = null;
+export const FetchDirectConversationsFromServer = () => {
+  return async (dispatch, getState) => {
+    const token =
+      getState().auth?.token ||
+      (typeof window !== "undefined" ? window.localStorage.getItem("token") : null);
+    if (!token) return;
+    if (inFlightHttpFetch) return inFlightHttpFetch;
+
+    inFlightHttpFetch = axios
+      .get("/user/get-direct-conversations", {
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      })
+      .then((res) => {
+        const list = res?.data?.data;
+        if (Array.isArray(list)) {
+          dispatch(
+            slice.actions.fetchDirectConversations({
+              conversations: list,
+            })
+          );
+        }
+      })
+      .catch(() => {
+        // Socket fallback will still deliver conversations
+      })
+      .finally(() => {
+        inFlightHttpFetch = null;
+      });
+
+    return inFlightHttpFetch;
   };
 };
 

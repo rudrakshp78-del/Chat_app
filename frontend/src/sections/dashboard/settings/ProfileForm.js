@@ -422,7 +422,6 @@ const ProfileForm = () => {
             <RHFTextField
               name="firstName"
               label="Name"
-              placeholder="Your name"
               helperText="This name is visible to your contacts"
             />
 
@@ -431,7 +430,6 @@ const ProfileForm = () => {
               rows={3}
               name="about"
               label="About"
-              placeholder="hello everyone!,I am using Trackon."
               helperText="Write a status or short bio"
             />
           </Stack>

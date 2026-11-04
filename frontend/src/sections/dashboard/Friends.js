@@ -1,5 +1,5 @@
 import React, { useEffect } from "react";
-import { Dialog, DialogContent, Slide, Stack, Tab, Tabs } from "@mui/material";
+import { Button, Dialog, DialogActions, DialogContent, Divider, Slide, Stack, Tab, Tabs } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import {
   FetchFriendRequests,
@@ -98,19 +98,36 @@ const Friends = ({ open, handleClose }) => {
       fullWidth
       maxWidth="xs"
       open={open}
-      keepMounted
       onClose={handleClose}
       sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
     >
       {/* <DialogTitle>{"Friends"}</DialogTitle> */}
-      <Stack p={2} sx={{ width: "100%" }}>
-        <Tabs value={value} onChange={handleChange} centered>
+      <Stack px={2} pt={2} pb={1} sx={{ width: "100%" }}>
+        <Tabs
+          value={value}
+          onChange={handleChange}
+          variant="fullWidth"
+          sx={{
+            width: "100%",
+            "& .MuiTab-root": {
+              minWidth: 0,
+              padding: "10px 8px",
+              fontWeight: 600,
+              fontSize: { xs: "0.85rem", sm: "0.925rem" },
+              textTransform: "none",
+              "&:not(:last-of-type)": {
+                marginRight: 0,
+              },
+            },
+          }}
+        >
           <Tab label="Explore" />
           <Tab label="Friends" />
           <Tab label="Requests" />
         </Tabs>
       </Stack>
-      <DialogContent>
+      <Divider />
+      <DialogContent sx={{ py: 2 }}>
         <Stack sx={{ height: "100%" }}>
           <Stack spacing={2.5}>
             {(() => {
@@ -131,6 +148,24 @@ const Friends = ({ open, handleClose }) => {
           </Stack>
         </Stack>
       </DialogContent>
+      <Divider />
+      <DialogActions sx={{ px: 2.5, py: 1.5, justifyContent: "flex-end" }}>
+        <Button
+          onClick={handleClose}
+          variant="outlined"
+          color="inherit"
+          sx={{
+            borderRadius: 1.5,
+            px: 2.5,
+            py: 0.65,
+            textTransform: "none",
+            fontWeight: 600,
+            fontSize: "0.85rem",
+          }}
+        >
+          Cancel
+        </Button>
+      </DialogActions>
     </Dialog>
   );
 };

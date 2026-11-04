@@ -18,6 +18,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { LogoutUser } from "../../redux/slices/auth";
 import getAvatarUrl, { DEFAULT_USER_AVATAR } from "../../utils/getAvatarUrl";
+import LogoutDialog from "../../components/LogoutDialog";
 
 const SideBar = () => {
   const dispatch = useDispatch();
@@ -27,10 +28,9 @@ const SideBar = () => {
 
   const getActiveIndex = () => {
     const current = location.pathname.toLowerCase();
-    if (current.startsWith("/status")) return 1;
-    if (current.startsWith("/group")) return 2;
-    if (current.startsWith("/call")) return 3;
-    if (current.startsWith("/settings")) return 4;
+    if (current.startsWith("/group")) return 1;
+    if (current.startsWith("/call")) return 2;
+    if (current.startsWith("/settings")) return 3;
     return 0;
   };
 
@@ -39,6 +39,7 @@ const SideBar = () => {
   const { onToggleMode } = useSettings();
 
   const [anchorEl, setAnchorEl] = React.useState(null);
+  const [openLogout, setOpenLogout] = React.useState(false);
 
   const open = Boolean(anchorEl);
 
@@ -46,19 +47,12 @@ const SideBar = () => {
     switch (index) {
       case 0:
         return "/app";
-
       case 1:
-        return "/status";
-
-      case 2:
         return "/Group";
-
-      case 3:
+      case 2:
         return "/call";
-
-      case 4:
+      case 3:
         return "/Settings";
-
       default:
         return "/app";
     }
@@ -209,7 +203,7 @@ const SideBar = () => {
               />
 
               {/* SETTINGS */}
-              {selected === 4 ? (
+              {selected === 3 ? (
                 <Box
                   p={1}
                   sx={{
@@ -218,7 +212,7 @@ const SideBar = () => {
                   }}
                 >
                   <IconButton
-                    onClick={() => navigate(getPath(4))}
+                    onClick={() => navigate(getPath(3))}
                     sx={{
                       color: "#fff",
                     }}
@@ -228,7 +222,7 @@ const SideBar = () => {
                 </Box>
               ) : (
                 <IconButton
-                  onClick={() => navigate(getPath(4))}
+                  onClick={() => navigate(getPath(3))}
                   sx={{
                     color: theme.palette.text.primary,
                   }}
@@ -290,11 +284,12 @@ const SideBar = () => {
                 {Profile_Menu.map((el, idx) => (
                   <MenuItem
                     key={el.title}
+                    sx={idx === 2 ? { color: "error.main", "&:hover": { bgcolor: "error.lighter" } } : {}}
                     onClick={() => {
                       handleClose();
 
                       if (idx === 2) {
-                        dispatch(LogoutUser());
+                        setOpenLogout(true);
                       } else {
                         navigate(getMenuPath(idx));
                       }
@@ -316,6 +311,7 @@ const SideBar = () => {
           </Stack>
         </Stack>
       </Box>
+      <LogoutDialog open={openLogout} handleClose={() => setOpenLogout(false)} />
     </Box>
   );
 };

@@ -19,8 +19,9 @@ const oneToOneMessageSchema = new mongoose.Schema({
       },
       type: {
         type: String,
-        enum: ["Text", "Media", "Document", "Doc", "Link", "Reply", "Sticker"],
+        enum: ["Text", "Media", "Document", "Doc", "Link", "Reply", "Sticker", "Voice", "Audio"],
       },
+      duration: { type: Number, default: 0 },
       created_at: {
         type: Date,
         default: Date.now,
@@ -85,6 +86,11 @@ const oneToOneMessageSchema = new mongoose.Schema({
 });
 
 oneToOneMessageSchema.index({ participants: 1 });
+oneToOneMessageSchema.index({
+  participants: 1,
+  "messages.to": 1,
+  "messages.status": 1,
+});
 
 const OneToOneMessage = mongoose.model(
   "OneToOneMessage",

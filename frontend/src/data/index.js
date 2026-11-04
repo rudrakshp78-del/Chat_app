@@ -2,7 +2,6 @@ import React from "react";
 import { DEFAULT_USER_AVATAR } from "../utils/getAvatarUrl";
 import {
   ChatCircleDots,
-  CircleDashed,
   Gear,
   GearSix,
   Phone,
@@ -21,7 +20,7 @@ const Profile_Menu = [
     icon: <Gear />,
   },
   {
-    title: "logout",
+    title: "Log Out",
     icon: <SignOut />,
   },
 ];
@@ -34,16 +33,11 @@ const Nav_Buttons = [
   },
   {
     index: 1,
-    icon: <CircleDashed />,
-    title: "Status",
-  },
-  {
-    index: 2,
     icon: <Users />,
     title: "Groups",
   },
   {
-    index: 3,
+    index: 2,
     icon: <Phone />,
     title: "Calls",
   },

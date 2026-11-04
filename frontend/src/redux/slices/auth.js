@@ -2,6 +2,7 @@ import { createSlice } from "@reduxjs/toolkit";
 
 import axios from "../../utils/axios";
 import { showSnackbar } from "./app";
+import { socket, connectSocket } from "../../socket";
 
 // ----------------------------------------------------------------------
 
@@ -49,6 +50,7 @@ const slice = createSlice({
 
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("token");
+      window.localStorage.removeItem("accessToken");
         window.localStorage.removeItem("user_id");
       }
     },
@@ -150,12 +152,10 @@ export function ForgotPassword(formValues) {
 
 export function LoginUser(formValues) {
   return async (dispatch, getState) => {
-    // Make API call here
-
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
-    await axios
-      .post(
+    try {
+      const response = await axios.post(
         "/auth/login",
         {
           ...formValues,
@@ -165,36 +165,66 @@ export function LoginUser(formValues) {
             "Content-Type": "application/json",
           },
         },
-      )
-      .then(function (response) {
-        console.log(response);
-        dispatch(
-          slice.actions.logIn({
-            isLoggedIn: true,
-            token: response.data.token,
-            user_id: response.data.user_id,
-          }),
-        );
-        window.localStorage.setItem("user_id", response.data.user_id);
-        dispatch(
-          showSnackbar({ severity: "success", message: response.data.message }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        console.log(error);
-        dispatch(
-          showSnackbar({
-            severity: "error",
-            message: error.message || "Login failed",
-          }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: true }),
-        );
-      });
+      );
+
+      console.log(response);
+
+      const token = response.data?.token;
+      const user_id = response.data?.user_id;
+
+      if (typeof window !== "undefined") {
+        if (token) {
+          window.localStorage.setItem("token", token);
+        }
+        if (user_id) {
+          window.localStorage.setItem("user_id", user_id);
+        }
+      }
+
+      dispatch(
+        slice.actions.logIn({
+          isLoggedIn: true,
+          token,
+          user_id,
+        }),
+      );
+
+      try {
+        if (user_id) {
+          connectSocket(user_id);
+        }
+      } catch (err) {
+        console.error("Socket connect error on login:", err);
+      }
+
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: response.data?.message || "Logged in successfully!",
+        }),
+      );
+
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false }),
+      );
+
+      return true;
+    } catch (error) {
+      console.log(error);
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message:
+            error.response?.data?.message ||
+            error.message ||
+            "Login failed",
+        }),
+      );
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: true }),
+      );
+      return false;
+    }
   };
 }
 
@@ -344,9 +374,35 @@ export function SocialLogin(socialData) {
 
 export function LogoutUser() {
   return async (dispatch, getState) => {
-    window.localStorage.removeItem("user_id");
-    window.localStorage.removeItem("token");
+    try {
+      const user_id =
+        typeof window !== "undefined"
+          ? window.localStorage.getItem("user_id")
+          : null;
+      if (socket) {
+        if (user_id && socket.connected) {
+          socket.emit("end", { user_id });
+        }
+        socket.disconnect();
+      }
+    } catch (e) {
+      console.error("Socket error on logout:", e);
+    }
+
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem("user_id");
+      window.localStorage.removeItem("token");
+      window.localStorage.removeItem("accessToken");
+      window.localStorage.removeItem("trackon_cached_conversations");
+    }
+
     dispatch(slice.actions.signOut());
+    dispatch(
+      showSnackbar({
+        severity: "success",
+        message: "Logged out successfully",
+      })
+    );
   };
 }
 
@@ -354,45 +410,72 @@ export function RegisterUser(formValues) {
   return async (dispatch, getState) => {
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
-    await axios
-      .post(
+    const normalizedEmail = (formValues.email || "").trim().toLowerCase();
+
+    try {
+      const response = await axios.post(
         "/auth/register",
         {
           ...formValues,
+          email: normalizedEmail,
         },
         {
           headers: {
             "Content-Type": "application/json",
           },
         },
-      )
-      .then(function (response) {
-        console.log(response);
-        dispatch(
-          slice.actions.updateRegisterEmail({ email: formValues.email }),
-        );
+      );
 
-        window.localStorage.setItem("verify_email", formValues.email);
+      console.log("Register response:", response.data);
 
-        dispatch(
-          showSnackbar({ severity: "success", message: response.data.message }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        console.log(error);
-        dispatch(showSnackbar({ severity: "error", message: error.message }));
-        dispatch(
-          slice.actions.updateIsLoading({ error: true, isLoading: false }),
-        );
-      })
-      .finally(() => {
-        if (!getState().auth.error) {
-          window.location.href = "/auth/verify";
+      dispatch(
+        slice.actions.updateRegisterEmail({ email: normalizedEmail }),
+      );
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem("verify_email", normalizedEmail);
+        if (response.data?.otp || response.data?.dev_otp) {
+          window.localStorage.setItem(
+            "dev_otp",
+            String(response.data?.otp || response.data?.dev_otp),
+          );
         }
-      });
+      }
+
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message:
+            response.data?.message ||
+            "Registration successful! Please verify your email.",
+        }),
+      );
+
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false }),
+      );
+
+      if (typeof window !== "undefined") {
+        window.location.href = "/auth/verify";
+      }
+      return true;
+    } catch (error) {
+      console.error("Register error:", error);
+      let errorMsg =
+        error?.response?.data?.message ||
+        error?.message ||
+        (typeof error === "string" ? error : "Registration failed. Please try again.");
+
+      if (typeof errorMsg === "string" && (errorMsg.includes("<!DOCTYPE") || errorMsg.includes("<html"))) {
+        errorMsg = "Backend server error. Please try again shortly.";
+      }
+
+      dispatch(showSnackbar({ severity: "error", message: errorMsg }));
+      dispatch(
+        slice.actions.updateIsLoading({ error: true, isLoading: false }),
+      );
+      return false;
+    }
   };
 }
 
@@ -402,52 +485,79 @@ export function VerifyEmail(formValues) {
 
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
+    const normalizedEmail = (formValues.email || "").trim().toLowerCase();
 
-    await axios
-      .post(
+    try {
+      const response = await axios.post(
         "/auth/verify",
         {
           ...formValues,
+          email: normalizedEmail,
         },
         {
           headers: {
             "Content-Type": "application/json",
           },
         },
-      )
-      .then(function (response) {
-        console.log(response);
-        dispatch(slice.actions.updateRegisterEmail({ email: "" }));
-        window.localStorage.removeItem("verify_email");
-        window.localStorage.setItem("user_id", response.data.user_id);
-        window.localStorage.setItem("token", response.data.token);
-        dispatch(
-          slice.actions.logIn({
-            isLoggedIn: true,
-            token: response.data.token,
-            user_id: response.data.user_id,
-          }),
-        );
+      );
 
-        dispatch(
-          showSnackbar({ severity: "success", message: response.data.message }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        console.log(error);
-        const errorMsg =
-          error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "OTP verification failed";
-        dispatch(showSnackbar({ severity: "error", message: errorMsg }));
-        dispatch(
-          slice.actions.updateIsLoading({ error: true, isLoading: false }),
-        );
-      });
+      console.log("Verify response:", response.data);
+      dispatch(slice.actions.updateRegisterEmail({ email: "" }));
+
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("verify_email");
+        window.localStorage.removeItem("dev_otp");
+        if (response.data?.user_id) {
+          window.localStorage.setItem("user_id", response.data.user_id);
+        }
+        if (response.data?.token) {
+          window.localStorage.setItem("token", response.data.token);
+        }
+        window.localStorage.setItem("first_time_signup", "true");
+      }
+
+      dispatch(
+        slice.actions.logIn({
+          isLoggedIn: true,
+          token: response.data.token,
+          user_id: response.data.user_id,
+        }),
+      );
+
+      try {
+        if (response.data?.user_id) {
+          connectSocket(response.data.user_id);
+        }
+      } catch (err) {
+        console.error("Socket connect error after verify:", err);
+      }
+
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: response.data?.message || "Account verified successfully!",
+        }),
+      );
+
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false }),
+      );
+
+      return true;
+    } catch (error) {
+      console.error("Verify error:", error);
+      const errorMsg =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        (typeof error === "string" ? error : "OTP verification failed");
+
+      dispatch(showSnackbar({ severity: "error", message: errorMsg }));
+      dispatch(
+        slice.actions.updateIsLoading({ error: true, isLoading: false }),
+      );
+      return false;
+    }
   };
 }
 
@@ -455,37 +565,53 @@ export function ResendOTP(email) {
   return async (dispatch, getState) => {
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
-    await axios
-      .post(
+    const normalizedEmail = (email || "").trim().toLowerCase();
+
+    try {
+      const response = await axios.post(
         "/auth/resend-otp",
-        { email },
+        { email: normalizedEmail },
         {
           headers: {
             "Content-Type": "application/json",
           },
         },
-      )
-      .then(function (response) {
-        dispatch(
-          showSnackbar({
-            severity: "success",
-            message: response.data.message || "OTP resent successfully!",
-          }),
+      );
+
+      if (
+        typeof window !== "undefined" &&
+        (response.data?.otp || response.data?.dev_otp)
+      ) {
+        window.localStorage.setItem(
+          "dev_otp",
+          String(response.data?.otp || response.data?.dev_otp),
         );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        const errorMsg =
-          error.response?.data?.message ||
-          error.response?.data?.error ||
-          error.message ||
-          "Failed to resend OTP";
-        dispatch(showSnackbar({ severity: "error", message: errorMsg }));
-        dispatch(
-          slice.actions.updateIsLoading({ error: true, isLoading: false }),
-        );
-      });
+      }
+
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: response.data?.message || "OTP resent successfully!",
+        }),
+      );
+
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false }),
+      );
+      return true;
+    } catch (error) {
+      console.error("Resend OTP error:", error);
+      const errorMsg =
+        error?.response?.data?.message ||
+        error?.response?.data?.error ||
+        error?.message ||
+        (typeof error === "string" ? error : "Failed to resend OTP");
+
+      dispatch(showSnackbar({ severity: "error", message: errorMsg }));
+      dispatch(
+        slice.actions.updateIsLoading({ error: true, isLoading: false }),
+      );
+      return false;
+    }
   };
 }

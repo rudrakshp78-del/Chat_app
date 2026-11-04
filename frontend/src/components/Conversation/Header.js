@@ -393,7 +393,7 @@ const Header = () => {
     <Box
       sx={{
         width: "100%",
-        minHeight: 72,
+        minHeight: { xs: 60, sm: 72 },
         height: "auto",
         boxSizing: "border-box",
 
@@ -413,7 +413,7 @@ const Header = () => {
         justifyContent="space-between"
         sx={{
           width: "100%",
-          height: 72,
+          height: { xs: 60, sm: 72 },
           px: { xs: 1, sm: 2 },
           boxSizing: "border-box",
         }}

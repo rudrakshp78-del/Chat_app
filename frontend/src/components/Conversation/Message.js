@@ -10,6 +10,7 @@ import {
   ReplyMsg,
   LinkMsg,
   DocMsg,
+  VoiceMsg,
 } from "./MsgType";
 import { fMessageDayDivider } from "../../utils/formatTime";
 import {
@@ -125,7 +126,8 @@ const Message = ({ menu, starredOnly = false }) => {
         width: "100%",
         boxSizing: "border-box",
         px: { xs: 1.25, sm: 2.5 },
-        py: { xs: 1, sm: 2 },
+        pt: { xs: 0.75, sm: 1.5 },
+        pb: { xs: 0.25, sm: 0.5 },
       }}
     >
       <Stack spacing={0.75}>
@@ -220,6 +222,12 @@ const Message = ({ menu, starredOnly = false }) => {
                         <ReplyMsg key={el.id || index} el={el} menu={menu} />
                       );
 
+                    case "voice":
+                    case "audio":
+                      return (
+                        <VoiceMsg key={el.id || index} el={el} menu={menu} />
+                      );
+
                     default:
                       return (
                         <TextMsg key={el.id || index} el={el} menu={menu} />
@@ -259,7 +267,7 @@ const Message = ({ menu, starredOnly = false }) => {
             </Typography>
           </Box>
         )}
-        <div ref={messageEndRef} />
+        <Box ref={messageEndRef} sx={{ height: 0, m: 0, p: 0 }} />
       </Stack>
 
       <ChatRetentionDialog

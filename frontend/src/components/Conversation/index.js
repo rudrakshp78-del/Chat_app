@@ -105,6 +105,13 @@ const Conversation = () => {
       });
     };
 
+    const handleAppRefresh = () => {
+      if (activeRoomId) {
+        scheduleMessagesFetch();
+      }
+    };
+    window.addEventListener("app_refresh", handleAppRefresh);
+
     if (activeRoomId) {
       const current = (conversationsRef.current || []).find(
         (el) => el?.id?.toString() === activeRoomId?.toString()
@@ -115,12 +122,18 @@ const Conversation = () => {
 
       scheduleMessagesFetch();
       socket.on("connect", scheduleMessagesFetch);
+
+      const handleAppRefresh = () => {
+        scheduleMessagesFetch();
+      };
+      window.addEventListener("app_refresh", handleAppRefresh);
     }
 
     // When leaving the conversation, if mode is "after_viewing", delete viewed chats
     return () => {
       clearRetries();
       socket.off("connect", scheduleMessagesFetch);
+      window.removeEventListener("app_refresh", handleAppRefresh);
       if (activeRoomId && getChatRetentionMode(activeRoomId) === "after_viewing") {
         socket.emit("clear_chat", {
           conversation_id: activeRoomId,

@@ -42,3 +42,10 @@ Thumbs.db
 *.suo
 *.ntvs*
 *.njsproj
+
+# Native keys and binary artifacts
+*.jks
+*.keystore
+*.apk
+*.aab
+*.app

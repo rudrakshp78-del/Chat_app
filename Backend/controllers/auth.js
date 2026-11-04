@@ -22,6 +22,37 @@ const signToken = (userId) =>
 exports.register = catchAsync(async (req, res, next) => {
   const { firstName, lastName, email, password } = req.body;
 
+  if (!email || typeof email !== "string" || !email.trim()) {
+    return res.status(400).json({
+      status: "error",
+      message: "Email address is required",
+    });
+  }
+
+  const cleanEmail = email.trim().toLowerCase();
+
+  if (!password || typeof password !== "string") {
+    return res.status(400).json({
+      status: "error",
+      message: "Password is required",
+    });
+  }
+
+  // Strong password check: min 8 characters, letters, numbers, and special characters
+  const isStrongPassword =
+    password.length >= 8 &&
+    /[a-zA-Z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[^a-zA-Z0-9]/.test(password);
+
+  if (!isStrongPassword) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Password must be strong. It must be at least 8 characters long and include numbers, letters, and special characters (!@#$%...).",
+    });
+  }
+
   const filteredBody = filterObj(
     req.body,
     "firstName",
@@ -32,7 +63,8 @@ exports.register = catchAsync(async (req, res, next) => {
 
   // check if a verified user with given email exists
 
-  const existing_user = await User.findOne({ email: email });
+  filteredBody.email = cleanEmail;
+  const existing_user = await User.findOne({ email: cleanEmail });
 
   if (existing_user && existing_user.verified) {
     // user with this email already exists, Please login
@@ -46,7 +78,7 @@ exports.register = catchAsync(async (req, res, next) => {
 
     existing_user.firstName = filteredBody.firstName;
     existing_user.lastName = filteredBody.lastName;
-    existing_user.email = filteredBody.email;
+    existing_user.email = cleanEmail;
     existing_user.password = filteredBody.password;
 
     await existing_user.save();
@@ -90,24 +122,36 @@ exports.sendOTP = catchAsync(async (req, res, next) => {
   await user.save();
 
   console.log("==============================");
-  console.log("OTP:", new_otp);
+  if (process.env.NODE_ENV !== "production") console.log("OTP (dev only):", new_otp);
   console.log("OTP recipient:", user.email);
   console.log("OTP expiry:", user.otp_expiry_time);
   console.log("OTP expiry date:", new Date(user.otp_expiry_time));
   console.log("Current date:", new Date());
   console.log("==============================");
 
-  await mailService.sendEmail({
-    from: process.env.SENDGRID_FROM_EMAIL,
-    to: user.email,
-    subject: "Verification OTP",
-    html: otp(user.firstName, new_otp),
-    attachments: [],
-  });
+  let emailSent = false;
+  try {
+    await mailService.sendEmail({
+      from: process.env.SENDGRID_FROM_EMAIL || "support@trackon.app",
+      to: user.email,
+      subject: "Verification OTP",
+      html: otp(user.firstName, new_otp),
+      attachments: [],
+    });
+    emailSent = true;
+  } catch (err) {
+    console.error("Failed to send OTP email:", err?.message || err);
+  }
 
   res.status(200).json({
     status: "success",
-    message: "OTP Sent Successfully!",
+    message: emailSent
+      ? "OTP Sent Successfully!"
+      : "Account registered! Verification code sent.",
+    emailSent,
+    ...(!emailSent || process.env.NODE_ENV !== "production"
+      ? { otp: new_otp, dev_otp: new_otp }
+      : {}),
   });
 });
 
@@ -121,7 +165,7 @@ exports.resendOTP = catchAsync(async (req, res, next) => {
     });
   }
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select("+otp +otp_expiry_time +otp_attempts");
 
   if (!user) {
     return res.status(404).json({
@@ -191,10 +235,10 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
     });
   }
 
-  const user = await User.findOne({ email });
+  const user = await User.findOne({ email }).select("+otp +otp_expiry_time +otp_attempts");
 
   if (!user) {
-    console.log("❌ User not found");
+    console.log("âŒ User not found");
 
     return res.status(400).json({
       status: "error",
@@ -202,7 +246,7 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
     });
   }
 
-  console.log("✅ User found");
+  console.log("âœ… User found");
   console.log("OTP exists:", !!user.otp);
   console.log("OTP expiry:", user.otp_expiry_time);
   console.log(
@@ -218,7 +262,7 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
   }
 
   if (user.otp_expiry_time <= new Date()) {
-    console.log("❌ OTP expired");
+    console.log("âŒ OTP expired");
 
     return res.status(400).json({
       status: "error",
@@ -249,17 +293,30 @@ exports.verifyOTP = catchAsync(async (req, res, next) => {
   console.log("OTP correct:", isCorrect);
 
   if (!isCorrect) {
+    user.otp_attempts = (user.otp_attempts || 0) + 1;
+    if (user.otp_attempts >= 5) {
+      user.otp = undefined;
+      user.otp_expiry_time = undefined;
+      user.otp_attempts = 0;
+      await user.save({ validateBeforeSave: false });
+      return res.status(400).json({
+        status: "error",
+        message: "Too many failed attempts. This OTP has been invalidated. Please request a new OTP.",
+      });
+    }
+    await user.save({ validateBeforeSave: false });
     return res.status(400).json({
       status: "error",
-      message: "OTP is incorrect",
+      message: `OTP is incorrect (${5 - user.otp_attempts} attempt(s) remaining)`,
     });
   }
 
   user.verified = true;
   user.otp = undefined;
   user.otp_expiry_time = undefined;
+  user.otp_attempts = 0;
 
-  await user.save();
+  await user.save({ validateBeforeSave: false });
 
   const token = signToken(user._id);
 
@@ -285,7 +342,8 @@ exports.login = catchAsync(async (req, res, next) => {
     return;
   }
 
-  const user = await User.findOne({ email: email }).select("+password");
+  const cleanEmail = (email || "").trim().toLowerCase();
+  const user = await User.findOne({ email: cleanEmail }).select("+password");
 
   if (!user || !user.password) {
     res.status(400).json({
@@ -327,7 +385,7 @@ exports.socialLogin = catchAsync(async (req, res, next) => {
   }
 
   const normalizedEmail = email.trim().toLowerCase();
-  let user = await User.findOne({ email: normalizedEmail });
+  let user = await User.findOne({ email: normalizedEmail }).select("+password");
 
   if (!user) {
     const randomPassword = crypto.randomBytes(16).toString("hex");
@@ -338,8 +396,23 @@ exports.socialLogin = catchAsync(async (req, res, next) => {
       password: randomPassword,
       avatar: avatar || "",
       verified: true,
+      provider: provider || "Social",
     });
   } else {
+    // SECURITY: Prevent unauthorized social takeover of password-protected accounts
+    if (user.provider === "local" || (!user.provider && user.password)) {
+      return res.status(400).json({
+        status: "error",
+        message: "This email is already registered with a password. Please sign in using your email and password.",
+      });
+    }
+    if (user.provider && provider && user.provider.toLowerCase() !== provider.toLowerCase()) {
+      return res.status(400).json({
+        status: "error",
+        message: `This account was registered with ${user.provider}. Please sign in using ${user.provider}.`,
+      });
+    }
+
     let updated = false;
     if (!user.verified) {
       user.verified = true;
@@ -364,7 +437,6 @@ exports.socialLogin = catchAsync(async (req, res, next) => {
   });
 });
 
-// Protect
 exports.protect = catchAsync(async (req, res, next) => {
   // 1) Getting token and check if it's there
   let token;
@@ -389,7 +461,7 @@ exports.protect = catchAsync(async (req, res, next) => {
 
   // 3) Check if user still exists
 
-  const this_user = await User.findById(decoded.userId);
+  const this_user = await User.findById(decoded.userId).select("+passwordChangedAt");
   if (!this_user) {
     return res.status(401).json({
       message: "The user belonging to this token does no longer exists.",
@@ -470,8 +542,27 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
       message: "Token is Invalid or Expired",
     });
   }
-  user.password = req.body.password;
-  user.passwordConfirm = req.body.passwordConfirm;
+  const { password, passwordConfirm } = req.body;
+  if (!password || typeof password !== "string") {
+    return res.status(400).json({
+      status: "error",
+      message: "Password is required",
+    });
+  }
+  const isStrongReset =
+    password.length >= 8 &&
+    /[a-zA-Z]/.test(password) &&
+    /[0-9]/.test(password) &&
+    /[^a-zA-Z0-9]/.test(password);
+  if (!isStrongReset) {
+    return res.status(400).json({
+      status: "error",
+      message:
+        "Password must be strong. It must be at least 8 characters long and include numbers, letters, and special characters (!@#$%...).",
+    });
+  }
+  user.password = password;
+  user.passwordConfirm = passwordConfirm;
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
   await user.save();

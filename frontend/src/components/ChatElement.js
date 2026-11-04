@@ -624,21 +624,48 @@ const ChatElement = ({
             position: "relative",
             zIndex: 2,
             width: "100%",
-            borderRadius: 1,
+            borderRadius: 2,
             userSelect: "none",
             WebkitUserSelect: "none",
             transform:
               swipeOffset > 0 ? `translateX(${swipeOffset}px)` : "none",
             transition: isSwiping
               ? "none"
-              : "transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)",
+              : "all 0.22s cubic-bezier(0.2, 0.8, 0.2, 1)",
+            boxShadow: isSelected
+              ? (theme.palette.mode === "light"
+                  ? `0 4px 14px ${alpha(theme.palette.primary.main, 0.2)}`
+                  : "0 4px 14px rgba(0, 0, 0, 0.4)")
+              : (theme.palette.mode === "light"
+                  ? "0 2px 6px rgba(0, 0, 0, 0.04)"
+                  : "0 2px 6px rgba(0, 0, 0, 0.2)"),
+            border: isSelected
+              ? `1.5px solid ${theme.palette.primary.main}`
+              : `1px solid ${
+                  theme.palette.mode === "light"
+                    ? "rgba(0, 0, 0, 0.05)"
+                    : "rgba(255, 255, 255, 0.06)"
+                }`,
             backgroundColor: isSelected
-              ? theme.palette.mode === "light"
-                ? alpha(theme.palette.primary.main, 0.5)
-                : theme.palette.primary.main
-              : theme.palette.mode === "light"
-              ? "#fff"
-              : theme.palette.background.paper,
+              ? (theme.palette.mode === "light"
+                  ? alpha(theme.palette.primary.main, 0.1)
+                  : alpha(theme.palette.primary.main, 0.24))
+              : (theme.palette.mode === "light"
+                  ? "#ffffff"
+                  : theme.palette.background.paper),
+            "&:hover": {
+              backgroundColor: isSelected
+                ? (theme.palette.mode === "light"
+                    ? alpha(theme.palette.primary.main, 0.14)
+                    : alpha(theme.palette.primary.main, 0.3))
+                : (theme.palette.mode === "light"
+                    ? alpha(theme.palette.primary.main, 0.04)
+                    : alpha(theme.palette.background.paper, 0.85)),
+              transform: isSwiping ? undefined : "translateY(-1px)",
+              boxShadow: (theme.palette.mode === "light"
+                ? "0 6px 16px rgba(0, 0, 0, 0.08)"
+                : "0 6px 16px rgba(0, 0, 0, 0.35)"),
+            },
           }}
           p={2}
         >

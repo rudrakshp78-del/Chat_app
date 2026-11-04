@@ -245,3 +245,102 @@ export function togglePersonBlocked(conversationId, personName) {
   }
 }
 
+// ----------------------------------------------------------------------
+// Sent Friend Requests Persistence Helpers
+// ----------------------------------------------------------------------
+const SENT_REQUESTS_KEY_PREFIX = "trackon_sent_friend_requests_";
+
+export function getSentFriendRequests(userId) {
+  try {
+    const currentUserId =
+      userId || localStorage.getItem("user_id") || "default";
+    const raw = localStorage.getItem(`${SENT_REQUESTS_KEY_PREFIX}${currentUserId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function isFriendRequestSent(targetId, userId) {
+  if (!targetId) return false;
+  const requests = getSentFriendRequests(userId);
+  return Boolean(requests[String(targetId)]);
+}
+
+export function setFriendRequestSent(targetId, isSent, userId) {
+  if (!targetId) return false;
+  try {
+    const currentUserId =
+      userId || localStorage.getItem("user_id") || "default";
+    const requests = getSentFriendRequests(currentUserId);
+    const key = String(targetId);
+    if (isSent) {
+      requests[key] = true;
+    } else {
+      delete requests[key];
+    }
+    localStorage.setItem(
+      `${SENT_REQUESTS_KEY_PREFIX}${currentUserId}`,
+      JSON.stringify(requests)
+    );
+    window.dispatchEvent(
+      new CustomEvent("sent_friend_requests_updated", {
+        detail: { targetId: key, isSent: Boolean(isSent) },
+      })
+    );
+    return Boolean(isSent);
+  } catch (err) {
+    console.error("Failed to update sent friend requests:", err);
+    return false;
+  }
+}
+
+// ----------------------------------------------------------------------
+// Accepted Friend Requests Persistence Helpers
+// ----------------------------------------------------------------------
+const ACCEPTED_REQUESTS_KEY_PREFIX = "trackon_accepted_requests_";
+
+export function getAcceptedFriendRequests(userId) {
+  try {
+    const currentUserId =
+      userId || localStorage.getItem("user_id") || "default";
+    const raw = localStorage.getItem(`${ACCEPTED_REQUESTS_KEY_PREFIX}${currentUserId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function isFriendRequestAccepted(requestId, userId) {
+  if (!requestId) return false;
+  const requests = getAcceptedFriendRequests(userId);
+  return Boolean(requests[String(requestId)]);
+}
+
+export function setFriendRequestAccepted(requestId, isAccepted, userId) {
+  if (!requestId) return false;
+  try {
+    const currentUserId =
+      userId || localStorage.getItem("user_id") || "default";
+    const requests = getAcceptedFriendRequests(currentUserId);
+    const key = String(requestId);
+    if (isAccepted) {
+      requests[key] = true;
+    } else {
+      delete requests[key];
+    }
+    localStorage.setItem(
+      `${ACCEPTED_REQUESTS_KEY_PREFIX}${currentUserId}`,
+      JSON.stringify(requests)
+    );
+    window.dispatchEvent(
+      new CustomEvent("accepted_friend_requests_updated", {
+        detail: { requestId: key, isAccepted: Boolean(isAccepted) },
+      })
+    );
+    return Boolean(isAccepted);
+  } catch (err) {
+    console.error("Failed to update accepted friend requests:", err);
+    return false;
+  }
+}

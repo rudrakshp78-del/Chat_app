@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="theme-color" content="#000000" />
     <meta
       name="description"
@@ -32,6 +32,10 @@
     -->
     <title>Trackon Chat</title>
     <style>
+      :root {
+        --safe-top: env(safe-area-inset-top, 38px);
+        --safe-bottom: env(safe-area-inset-bottom, 48px);
+      }
       *, *::before, *::after {
         box-sizing: border-box;
       }
@@ -45,6 +49,23 @@
         -webkit-tap-highlight-color: transparent;
       }
     </style>
+    <script>
+      (function() {
+        function checkBridgeInsets() {
+          try {
+            if (window.AndroidThemeBridge && typeof window.AndroidThemeBridge.getSafeTop === 'function') {
+              var t = window.AndroidThemeBridge.getSafeTop();
+              var b = window.AndroidThemeBridge.getSafeBottom();
+              if (t > 0) document.documentElement.style.setProperty('--safe-top', t + 'px');
+              if (b >= 0) document.documentElement.style.setProperty('--safe-bottom', b + 'px');
+            }
+          } catch(e) {}
+        }
+        checkBridgeInsets();
+        window.addEventListener('DOMContentLoaded', checkBridgeInsets);
+        window.addEventListener('load', checkBridgeInsets);
+      })();
+    </script>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

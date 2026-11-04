@@ -19,21 +19,38 @@ export default function RHFAutocomplete({ name, label, helperText, ...other }) {
     <Controller
       name={name}
       control={control}
-      render={({ field, fieldState: { error } }) => (
-        <Autocomplete
-          {...field}
-          onChange={(event, newValue) => setValue(name, newValue, { shouldValidate: true })}
-          renderInput={(params) => (
-            <TextField
-              label={label}
-              error={!!error}
-              helperText={error ? error?.message : helperText}
-              {...params}
-            />
-          )}
-          {...other}
-        />
-      )}
+      render={({ field, fieldState: { error } }) => {
+        const { ref, onChange: fieldOnChange, value, ...restField } = field;
+        const safeValue =
+          value !== undefined && value !== null
+            ? value
+            : other.multiple
+            ? []
+            : null;
+
+        return (
+          <Autocomplete
+            {...restField}
+            value={safeValue}
+            onChange={(event, newValue) => {
+              if (fieldOnChange) {
+                fieldOnChange(newValue);
+              }
+              setValue(name, newValue, { shouldValidate: true });
+            }}
+            renderInput={(params) => (
+              <TextField
+                {...params}
+                inputRef={ref}
+                label={label}
+                error={!!error}
+                helperText={error ? error?.message : helperText}
+              />
+            )}
+            {...other}
+          />
+        );
+      }}
     />
   );
 }

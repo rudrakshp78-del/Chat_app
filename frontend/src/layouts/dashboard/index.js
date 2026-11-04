@@ -1,11 +1,16 @@
 import React, { useEffect, useRef } from "react";
 import { Box } from "@mui/material";
+import { useTheme } from "@mui/material/styles";
 import { Navigate, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
 import useResponsive from "../../hooks/useResponsive";
 import SideBar from "./sidebar";
 import BottomNav from "./BottomNav";
+import InAppNotification from "../../components/InAppNotification";
+import FirstTimeNotificationDialog from "../../components/FirstTimeNotificationDialog";
+import PullToRefresh from "../../components/PullToRefresh";
+import { playNotificationChime } from "../../utils/notification";
 
 import {
   CloseSidebar,
@@ -18,6 +23,7 @@ import { socket, connectSocket } from "../../socket";
 
 import {
   FetchDirectConversations,
+  FetchDirectConversationsFromServer,
   UpdateDirectConversation,
   AddDirectConversation,
   AddDirectMessage,
@@ -53,6 +59,8 @@ import { showOutsideNotification } from "../../utils/notification";
 import { isConversationMuted } from "../../utils/muteHelpers";
 
 const DashboardLayout = () => {
+  const theme = useTheme();
+  const [inAppNotification, setInAppNotification] = React.useState(null);
   const isDesktop = useResponsive("up", "md");
   const location = useLocation();
   const navigate = useNavigate();
@@ -115,6 +123,21 @@ const DashboardLayout = () => {
 
     return () => {
       delete window.__handleAndroidBack;
+    };
+  }, [dispatch, navigate]);
+
+  // Handle tapping a native notification from the Android notification bar
+  useEffect(() => {
+    const handleOpenNotificationChat = (e) => {
+      const cid = e.detail?.conversation_id;
+      if (cid) {
+        dispatch(SelectConversation({ room_id: cid }));
+        navigate("/app");
+      }
+    };
+    window.addEventListener("open_notification_chat", handleOpenNotificationChat);
+    return () => {
+      window.removeEventListener("open_notification_chat", handleOpenNotificationChat);
     };
   }, [dispatch, navigate]);
 
@@ -191,13 +214,14 @@ const DashboardLayout = () => {
       return;
     }
 
+    const handleDirectConversations = (data) => {
+      if (Array.isArray(data)) {
+        dispatch(FetchDirectConversations({ conversations: data }));
+      }
+    };
+
     const handleSocketConnect = () => {
       socket.emit("user_connected", { user_id });
-      socket.emit("get_direct_conversations", { user_id }, (data) => {
-        if (Array.isArray(data)) {
-          dispatch(FetchDirectConversations({ conversations: data }));
-        }
-      });
     };
 
     if (!socket.connected) {
@@ -207,10 +231,11 @@ const DashboardLayout = () => {
     }
 
     socket.on("connect", handleSocketConnect);
+    socket.on("direct_conversations", handleDirectConversations);
 
     // New message
     socket.on("new_message", (data) => {
-      const message = data.message;
+      const message = data?.message;
       if (!message) return;
 
       console.log("NEW MESSAGE:", data);
@@ -227,10 +252,11 @@ const DashboardLayout = () => {
       if (isCurrentChat) {
         dispatch(
           AddDirectMessage({
-            id: message._id,
+            id: message._id || message.id,
+            temp_id: message.temp_id,
             type: "msg",
-            subtype: message.type,
-            message: message.text,
+            subtype: message.type || message.subtype || "Text",
+            message: message.text !== undefined ? message.text : message.message,
             file: message.file,
             fileName: message.fileName || "",
             song: message.song || null,
@@ -260,44 +286,84 @@ const DashboardLayout = () => {
         UpdateConversationOnNewMessage({
           conversation_id: data.conversation_id,
           message,
+          sender: data.sender,
           is_current: isCurrentChat,
         }),
       );
 
-      // Trigger notification for incoming message
+      // Trigger notification & top pop-up for incoming message
       if (incoming) {
         const senderConv = (conversations_ref.current || []).find(
           (c) =>
             c.id?.toString() === data.conversation_id?.toString() ||
             c._id?.toString() === data.conversation_id?.toString()
         );
-        const senderName = senderConv?.name || "New Message";
-        const contentPreview =
-          message.text || (message.file ? "Sent an attachment" : "New message");
+        const senderName =
+          data.sender?.name ||
+          senderConv?.name ||
+          (message.from?.firstName
+            ? `${message.from.firstName} ${message.from.lastName || ""}`.trim()
+            : "New Message");
+        const senderAvatar =
+          data.sender?.avatar ||
+          senderConv?.img ||
+          message.from?.avatar ||
+          "";
+
+        let contentPreview = message.text || "";
+        if (message.type === "Voice" || message.type === "Audio" || message.subtype === "voice") {
+          contentPreview = "🎤 Voice message";
+        } else if (!contentPreview) {
+          if (message.type === "Media" || message.subtype === "img") {
+            contentPreview = "📷 Photo";
+          } else if (message.type === "Document" || message.subtype === "doc") {
+            contentPreview = `📁 Document: ${message.fileName || "File"}`;
+          } else if (message.type === "Sticker") {
+            contentPreview = "🌟 Sticker";
+          } else {
+            contentPreview = "New message";
+          }
+        }
 
         const isMuted = isConversationMuted(data.conversation_id);
 
-        // 1. In-app Snackbar notification (when outside this specific chat and not muted)
-        if (!isCurrentChat && !isMuted) {
-          dispatch(
-            showSnackbar({
-              severity: "info",
-              message: `${senderName}: ${contentPreview}`,
-            })
-          );
-        }
+        if (!isMuted) {
+          // Play signature chime sound
+          playNotificationChime();
 
-        // 2. WhatsApp-style Outside / Desktop Notification (when in another chat OR window/tab is in background, and not muted)
-        if ((!isCurrentChat || document.hidden) && !isMuted) {
-          showOutsideNotification({
-            title: senderName,
-            body: contentPreview,
-            icon: senderConv?.img,
-            conversation_id: data.conversation_id,
-            onClick: () => {
-              dispatch(SelectConversation({ room_id: data.conversation_id }));
-            },
-          });
+          // Haptic vibration
+          if (typeof navigator !== "undefined" && navigator.vibrate) {
+            try {
+              navigator.vibrate([70, 40, 70]);
+            } catch {
+              // ignore
+            }
+          }
+
+          // 1. Show Top In-App Floating Popup Banner (when not currently in this chat, or window is hidden)
+          if (!isCurrentChat || document.hidden) {
+            setInAppNotification({
+              id: Date.now(),
+              conversation_id: data.conversation_id,
+              senderName,
+              senderAvatar,
+              contentPreview,
+            });
+          }
+
+          // 2. WhatsApp-style Outside / Desktop Notification
+          if (!isCurrentChat || document.hidden) {
+            showOutsideNotification({
+              title: senderName,
+              body: contentPreview,
+              icon: senderAvatar,
+              conversation_id: data.conversation_id,
+              onClick: () => {
+                dispatch(SelectConversation({ room_id: data.conversation_id }));
+                navigate("/app");
+              },
+            });
+          }
         }
       }
     });
@@ -468,6 +534,7 @@ const DashboardLayout = () => {
         navigator.serviceWorker.removeEventListener("message", handleServiceWorkerMessage);
       }
       socket?.off("connect", handleSocketConnect);
+      socket?.off("direct_conversations", handleDirectConversations);
       socket?.off("new_friend_request");
       socket?.off("request_accepted");
       socket?.off("request_sent");
@@ -488,10 +555,37 @@ const DashboardLayout = () => {
     };
   }, [isLoggedIn, user_id, dispatch]);
 
+  const handleRefreshApp = React.useCallback(async () => {
+    try {
+      if (!socket?.connected && user_id) {
+        connectSocket(user_id);
+      }
+
+      await dispatch(FetchDirectConversationsFromServer());
+
+      if (socket?.connected && user_id) {
+        socket.emit("get_direct_conversations", { user_id }, (data) => {
+          dispatch(FetchDirectConversations({ conversations: data || [] }));
+        });
+      }
+
+      dispatch(FetchUserProfile());
+      dispatch(FetchAllStatuses());
+
+      window.dispatchEvent(new CustomEvent("app_refresh"));
+
+      await new Promise((res) => setTimeout(res, 600));
+    } catch (err) {
+      console.error("App refresh error:", err);
+    }
+  }, [dispatch, user_id]);
+
   // If user is not logged in
   if (!isLoggedIn) {
     return <Navigate to="/auth/login" replace />;
   }
+
+
 
   // Show BottomNav on mobile when NOT inside an active chat conversation
   const isInsideChat =
@@ -509,6 +603,11 @@ const DashboardLayout = () => {
           maxHeight: "100%",
           minHeight: 0,
           overflow: "hidden",
+          backgroundColor:
+            theme.palette.mode === "light"
+              ? "#F8FAFF"
+              : theme.palette.background.paper,
+          pt: isDesktop ? 0 : "var(--safe-top, 0px)",
         }}
       >
         {isDesktop && <SideBar />}
@@ -522,12 +621,28 @@ const DashboardLayout = () => {
             minHeight: 0,
             overflow: "hidden",
             display: "flex",
+            position: "relative",
           }}
         >
-          <Outlet />
+          <PullToRefresh onRefresh={handleRefreshApp}>
+            <Outlet />
+          </PullToRefresh>
         </Box>
 
         {!isDesktop && !isInsideChat && <BottomNav />}
+
+        {/* First Time Account Notification Permission Pop-up */}
+        <FirstTimeNotificationDialog />
+
+        {/* Top In-App Floating Message Notification Popup */}
+        <InAppNotification
+          notification={inAppNotification}
+          onClose={() => setInAppNotification(null)}
+          onOpen={(cid) => {
+            dispatch(SelectConversation({ room_id: cid }));
+            navigate("/app");
+          }}
+        />
       </Box>
 
       {/* Audio call notification */}

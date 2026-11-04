@@ -37,6 +37,9 @@ export default function SettingDirection() {
           return (
             <Grid key={direction} item xs={6}>
               <BoxStyle
+                onClick={() =>
+                  onChangeDirection({ target: { value: direction } })
+                }
                 sx={{
                   ...(isSelected && {
                     color: "primary.main",

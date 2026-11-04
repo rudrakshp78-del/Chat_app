@@ -68,12 +68,14 @@ export const orangePreset = colorPresets[4];
 export const redPreset = colorPresets[5];
 
 export default function getColorPresets(presetsKey) {
-  return {
-    purple: purplePreset,
-    cyan: cyanPreset,
-    blue: bluePreset,
-    orange: orangePreset,
-    red: redPreset,
-    default: defaultPreset,
-  }[presetsKey];
+  return (
+    {
+      purple: purplePreset,
+      cyan: cyanPreset,
+      blue: bluePreset,
+      orange: orangePreset,
+      red: redPreset,
+      default: defaultPreset,
+    }[presetsKey] || defaultPreset
+  );
 }

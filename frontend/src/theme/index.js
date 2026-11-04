@@ -1,5 +1,5 @@
 import PropTypes from "prop-types";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 // @mui
 import { CssBaseline } from "@mui/material";
 import {
@@ -26,6 +26,14 @@ export default function ThemeProvider({ children }) {
   const { themeMode, themeDirection } = useSettings();
 
   const isLight = themeMode === "light";
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.AndroidThemeBridge?.setSystemBars) {
+      const statusHex = isLight ? "#F8FAFF" : "#161C24";
+      const navHex = isLight ? "#FFFFFF" : "#212B36";
+      window.AndroidThemeBridge.setSystemBars(statusHex, navHex, isLight);
+    }
+  }, [isLight]);
 
   const themeOptions = useMemo(
     () => ({

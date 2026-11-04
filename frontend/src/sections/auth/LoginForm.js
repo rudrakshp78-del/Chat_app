@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import * as Yup from "yup";
-import { Link as RouterLink } from "react-router-dom";
+import { Link as RouterLink, useNavigate } from "react-router-dom";
 // form
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -17,23 +17,27 @@ import { useDispatch, useSelector } from "react-redux";
 
 export default function AuthLoginForm() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const [showPassword, setShowPassword] = useState(false);
+  const isSubmittingRef = useRef(false);
 
-  const {isLoading} = useSelector((state) => state.auth);
+  const { isLoading } = useSelector((state) => state.auth);
 
   const LoginSchema = Yup.object().shape({
     email: Yup.string()
+      .trim()
       .required("Email is required")
       .email("Email must be a valid email address"),
     password: Yup.string().required("Password is required"),
   });
 
   const defaultValues = {
-    email: "demo@tawk.com",
-    password: "demo1234",
+    email: "",
+    password: "",
   };
 
   const methods = useForm({
+    mode: "onChange",
     resolver: yupResolver(LoginSchema),
     defaultValues,
   });
@@ -46,10 +50,19 @@ export default function AuthLoginForm() {
   } = methods;
 
   const onSubmit = async (data) => {
+    if (isSubmittingRef.current || isLoading) return;
+    isSubmittingRef.current = true;
+
     try {
-      console.log(data);
-      // submit data to backend
-      dispatch(LoginUser(data));
+      // Dismiss keyboard on submit
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+
+      const success = await dispatch(LoginUser(data));
+      if (success) {
+        navigate("/app", { replace: true });
+      }
     } catch (error) {
       console.error(error);
       reset();
@@ -57,7 +70,16 @@ export default function AuthLoginForm() {
         ...error,
         message: error.message,
       });
+    } finally {
+      isSubmittingRef.current = false;
     }
+  };
+
+  const handleSingleTapSubmit = (e) => {
+    if (e && typeof e.preventDefault === "function" && e.cancelable && e.type !== "click") {
+      e.preventDefault();
+    }
+    handleSubmit(onSubmit)();
   };
 
   return (
@@ -73,6 +95,12 @@ export default function AuthLoginForm() {
           name="password"
           label="Password"
           type={showPassword ? "text" : "password"}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleSingleTapSubmit(e);
+            }
+          }}
           InputProps={{
             endAdornment: (
               <InputAdornment position="end">
@@ -89,7 +117,13 @@ export default function AuthLoginForm() {
       </Stack>
 
       <Stack alignItems="flex-end" sx={{ my: 2 }}>
-        <Link component={RouterLink} to="/auth/reset-password" variant="body2" color="inherit" underline="always">
+        <Link
+          component={RouterLink}
+          to="/auth/reset-password"
+          variant="body2"
+          color="inherit"
+          underline="always"
+        >
           Forgot password?
         </Link>
       </Stack>
@@ -101,12 +135,30 @@ export default function AuthLoginForm() {
         type="submit"
         variant="contained"
         loading={isLoading}
+        onMouseDown={(e) => {
+          // Prevents focus-blur race condition on desktop
+          e.preventDefault();
+        }}
+        onTouchStart={(e) => {
+          // On mobile / Android touchscreens, prevents the soft keyboard
+          // dismissal from swallowing this tap as a "close keyboard" gesture!
+          handleSingleTapSubmit(e);
+        }}
+        onClick={handleSingleTapSubmit}
         sx={{
           bgcolor: "text.primary",
           color: (theme) =>
             theme.palette.mode === "light" ? "common.white" : "grey.800",
           "&:hover": {
             bgcolor: "text.primary",
+            color: (theme) =>
+              theme.palette.mode === "light" ? "common.white" : "grey.800",
+          },
+          "&.MuiLoadingButton-loading": {
+            bgcolor: "text.primary",
+            opacity: 0.85,
+          },
+          "& .MuiLoadingButton-loadingIndicator": {
             color: (theme) =>
               theme.palette.mode === "light" ? "common.white" : "grey.800",
           },

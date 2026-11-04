@@ -39,6 +39,12 @@ router.get(
   authController.getMe
 );
 
+router.get(
+  "/get-direct-conversations",
+  authController.protect,
+  userController.getDirectConversations
+);
+
 // Call routes
 router.post(
   "/start-audio-call",
