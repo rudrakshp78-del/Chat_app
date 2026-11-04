@@ -4,8 +4,6 @@ const morgan = require("morgan");
 const rateLimit = require("express-rate-limit");
 const helmet = require("helmet");
 const cors = require("cors");
-const mongoSanitize = require("express-mongo-sanitize");
-const xss = require("xss-clean");
 
 const app = express();
 
@@ -58,18 +56,30 @@ app.use(
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-// 4. Data sanitization against NoSQL query injection
-app.use(mongoSanitize());
+// 4. Data sanitization against NoSQL query injection (Express 5 compatible)
+app.use((req, res, next) => {
+  const sanitize = (obj) => {
+    if (!obj || typeof obj !== "object") return;
+    for (const key of Object.keys(obj)) {
+      if (key.startsWith("$") || key.includes(".")) {
+        delete obj[key];
+      } else if (typeof obj[key] === "object" && obj[key] !== null) {
+        sanitize(obj[key]);
+      }
+    }
+  };
 
-// 5. Data sanitization against XSS (Cross-Site Scripting)
-app.use(xss());
+  if (req.body) sanitize(req.body);
+  if (req.params) sanitize(req.params);
+  next();
+});
 
-// 6. Request logging in development
+// 5. Request logging in development
 if (process.env.NODE_ENV === "development") {
   app.use(morgan("dev"));
 }
 
-// 7. Rate limiting to prevent Brute-Force and DoS attacks
+// 6. Rate limiting to prevent Brute-Force and DoS attacks
 const apiLimiter = rateLimit({
   max: 3000,
   windowMs: 60 * 60 * 1000,
@@ -95,10 +105,10 @@ const authLimiter = rateLimit({
 app.use("/auth", authLimiter);
 app.use("/", apiLimiter);
 
-// 8. Mount application routes
+// 7. Mount application routes
 app.use(routes);
 
-// 9. 404 handler for undefined routes (Express 5 compatible)
+// 8. 404 handler for undefined routes (Express 5 compatible)
 app.use((req, res, next) => {
   res.status(404).json({
     status: "error",
@@ -106,7 +116,7 @@ app.use((req, res, next) => {
   });
 });
 
-// 10. Global Error Handler - returns clean JSON without exposing stack traces in production
+// 9. Global Error Handler - returns clean JSON without exposing stack traces in production
 app.use((err, req, res, next) => {
   if (process.env.NODE_ENV === "development") {
     console.error("Global Error Handler:", err);
