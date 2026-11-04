@@ -456,7 +456,11 @@ export function RegisterUser(formValues) {
       );
 
       if (typeof window !== "undefined") {
-        window.location.href = "/auth/verify";
+        setTimeout(() => {
+          if (window.location.pathname !== "/auth/verify") {
+            window.location.href = "/auth/verify";
+          }
+        }, 150);
       }
       return true;
     } catch (error) {

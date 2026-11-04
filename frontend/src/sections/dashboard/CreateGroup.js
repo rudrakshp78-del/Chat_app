@@ -223,6 +223,16 @@ const CreateGroupForm = ({ handleClose }) => {
             type="submit"
             variant="contained"
             disabled={isSubmitting}
+            onMouseDown={(e) => {
+              e.preventDefault();
+            }}
+            onTouchStart={(e) => {
+              if (e && typeof e.preventDefault === "function" && e.cancelable) {
+                e.preventDefault();
+              }
+              handleSubmit(onSubmit, onError)();
+            }}
+            onClick={handleSubmit(onSubmit, onError)}
             sx={{ px: 3, fontWeight: 600 }}
           >
             Create

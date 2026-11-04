@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import * as Yup from "yup";
+import { useNavigate } from "react-router-dom";
 // form
 import { useForm } from "react-hook-form";
 import { yupResolver } from "@hookform/resolvers/yup";
@@ -25,8 +26,11 @@ import { showSnackbar } from "../../redux/slices/app";
 
 export default function AuthRegisterForm() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const { isLoading } = useSelector((state) => state.auth);
   const [showPassword, setShowPassword] = useState(false);
+  const isSubmittingRef = useRef(false);
+  const lastTapRef = useRef(0);
 
   const RegisterSchema = Yup.object().shape({
     firstName: Yup.string().trim().required("First name is required"),
@@ -82,9 +86,20 @@ export default function AuthRegisterForm() {
     passedCount <= 1 ? "Weak" : passedCount <= 3 ? "Medium" : "Strong";
 
   const onSubmit = async (data) => {
+    if (isSubmittingRef.current || isLoading) return;
+    isSubmittingRef.current = true;
+
     try {
+      // Dismiss keyboard immediately on submit
+      if (document.activeElement && typeof document.activeElement.blur === "function") {
+        document.activeElement.blur();
+      }
+
       // submit data to backend
-      dispatch(RegisterUser(data));
+      const success = await dispatch(RegisterUser(data));
+      if (success) {
+        navigate("/auth/verify", { replace: true });
+      }
     } catch (error) {
       console.error(error);
       reset();
@@ -92,6 +107,8 @@ export default function AuthRegisterForm() {
         ...error,
         message: error.message,
       });
+    } finally {
+      isSubmittingRef.current = false;
     }
   };
 
@@ -105,6 +122,25 @@ export default function AuthRegisterForm() {
     dispatch(showSnackbar({ severity: "warning", message: firstMsg }));
   };
 
+  const handleSingleTapSubmit = (e) => {
+    const now = Date.now();
+    // Prevent duplicate event firing (e.g. touchstart followed 300ms later by synthetic click)
+    if (now - lastTapRef.current < 500) {
+      if (e && typeof e.preventDefault === "function" && e.cancelable) {
+        e.preventDefault();
+      }
+      return;
+    }
+    lastTapRef.current = now;
+
+    // Prevent virtual keyboard dismiss from cancelling this touch/click
+    if (e && typeof e.preventDefault === "function" && e.cancelable && e.type !== "click") {
+      e.preventDefault();
+    }
+
+    handleSubmit(onSubmit, onFormError)();
+  };
+
   return (
     <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit, onFormError)}>
       <Stack spacing={2.5} mb={3.5}>
@@ -113,17 +149,50 @@ export default function AuthRegisterForm() {
         )}
 
         <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-          <RHFTextField name="firstName" label="First name" />
-          <RHFTextField name="lastName" label="Last name" />
+          <RHFTextField
+            name="firstName"
+            label="First name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSingleTapSubmit(e);
+              }
+            }}
+          />
+          <RHFTextField
+            name="lastName"
+            label="Last name"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSingleTapSubmit(e);
+              }
+            }}
+          />
         </Stack>
 
-        <RHFTextField name="email" label="Email address" />
+        <RHFTextField
+          name="email"
+          label="Email address"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              handleSingleTapSubmit(e);
+            }
+          }}
+        />
 
         <Box>
           <RHFTextField
             name="password"
             label="Password"
             type={showPassword ? "text" : "password"}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSingleTapSubmit(e);
+              }
+            }}
             InputProps={{
               endAdornment: (
                 <InputAdornment position="end">
@@ -289,12 +358,30 @@ export default function AuthRegisterForm() {
         type="submit"
         variant="contained"
         loading={isLoading}
+        onMouseDown={(e) => {
+          // Prevents focus-blur race condition on desktop
+          e.preventDefault();
+        }}
+        onTouchStart={(e) => {
+          // On mobile / Android touchscreens, prevents the soft keyboard
+          // dismissal from swallowing this tap as a "close keyboard" gesture!
+          handleSingleTapSubmit(e);
+        }}
+        onClick={handleSingleTapSubmit}
         sx={{
           bgcolor: "text.primary",
           color: (theme) =>
             theme.palette.mode === "light" ? "common.white" : "grey.800",
           "&:hover": {
             bgcolor: "text.primary",
+            color: (theme) =>
+              theme.palette.mode === "light" ? "common.white" : "grey.800",
+          },
+          "&.MuiLoadingButton-loading": {
+            bgcolor: "text.primary",
+            opacity: 0.85,
+          },
+          "& .MuiLoadingButton-loadingIndicator": {
             color: (theme) =>
               theme.palette.mode === "light" ? "common.white" : "grey.800",
           },
