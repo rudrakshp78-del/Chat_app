@@ -46,7 +46,9 @@ const InAppNotification = ({ notification, onClose, onOpen }) => {
         <Paper
           elevation={12}
           onClick={() => {
-            if (notification.conversation_id) {
+            if (typeof notification.onClick === "function") {
+              notification.onClick();
+            } else if (notification.conversation_id) {
               onOpen(notification.conversation_id);
             }
             onClose();

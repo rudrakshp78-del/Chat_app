@@ -97,6 +97,7 @@ const initialState = {
     current_conversation: null,
     current_messages: [],
     messages_by_conversation: {},
+    pagination_by_conversation: {},
     search_query: "",
     open_search: false,
     replying_to: null,
@@ -179,6 +180,8 @@ const slice = createSlice({
           unread: unreadCount,
           last_msg_outgoing: lastMsgOutgoing,
           last_msg_status: lastMsgStatus,
+          last_msg_file: lastMsg?.file || lastMsg?.img || lastMsg?.url || null,
+          last_msg_type: lastMsg?.type || lastMsg?.subtype || null,
           pinned: false,
           about: this_user?.about,
           links: this_user?.links || [],
@@ -237,6 +240,8 @@ const slice = createSlice({
               unread: unreadCount,
               last_msg_outgoing: lastMsgOutgoing,
               last_msg_status: lastMsg ? (lastMsg.status || (lastMsg.seen ? "seen" : "sent")) : el.last_msg_status,
+              last_msg_file: lastMsg ? (lastMsg.file || lastMsg.img || lastMsg.url || null) : el.last_msg_file,
+              last_msg_type: lastMsg ? (lastMsg.type || lastMsg.subtype || null) : el.last_msg_type,
               pinned: false,
               about: user?.about || el.about,
               links: user?.links || el.links || [],
@@ -298,6 +303,8 @@ const slice = createSlice({
         unread: unreadCount,
         last_msg_outgoing: lastMsgOutgoing,
         last_msg_status: lastMsg ? (lastMsg.status || (lastMsg.seen ? "seen" : "sent")) : null,
+        last_msg_file: lastMsg?.file || lastMsg?.img || lastMsg?.url || null,
+        last_msg_type: lastMsg?.type || lastMsg?.subtype || null,
         pinned: false,
         about: user?.about,
         links: user?.links || [],
@@ -311,7 +318,9 @@ const slice = createSlice({
         );
       }
       saveCachedConversations(state.direct_chat.conversations);
-      state.direct_chat.current_conversation = newConv;
+      if (action.payload.setCurrent !== false) {
+        state.direct_chat.current_conversation = newConv;
+      }
     },
     setCurrentConversation(state, action) {
       state.direct_chat.current_conversation = action.payload;
@@ -333,11 +342,25 @@ const slice = createSlice({
         } else {
           state.direct_chat.current_messages = [];
         }
+        if (!state.direct_chat.pagination_by_conversation) {
+          state.direct_chat.pagination_by_conversation = {};
+        }
+        if (!state.direct_chat.pagination_by_conversation[convId]) {
+          state.direct_chat.pagination_by_conversation[convId] = {
+            has_more: true,
+            cursor: null,
+            before_id: null,
+            isLoadingOlder: false,
+          };
+        }
       }
     },
     fetchCurrentMessages(state, action) {
       const current_user_id = window.localStorage.getItem("user_id");
       const messages = action.payload.messages || [];
+      const has_more = action.payload.has_more;
+      const cursor = action.payload.cursor;
+      const before_id = action.payload.before_id;
       const convId = (
         action.payload.conversation_id ||
         state.direct_chat.current_conversation?.id ||
@@ -346,12 +369,101 @@ const slice = createSlice({
       const formatted_messages = messages.map((el) =>
         formatMessageItem(el, current_user_id)
       );
+
+      // Maintain correct message ordering (Requirement 9)
+      formatted_messages.sort((a, b) => {
+        const tA = new Date(a.created_at).getTime();
+        const tB = new Date(b.created_at).getTime();
+        return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
+      });
+
       state.direct_chat.current_messages = formatted_messages;
       if (convId) {
         if (!state.direct_chat.messages_by_conversation) {
           state.direct_chat.messages_by_conversation = {};
         }
         state.direct_chat.messages_by_conversation[convId] = formatted_messages;
+
+        if (!state.direct_chat.pagination_by_conversation) {
+          state.direct_chat.pagination_by_conversation = {};
+        }
+        state.direct_chat.pagination_by_conversation[convId] = {
+          has_more: typeof has_more === "boolean" ? has_more : formatted_messages.length >= 25,
+          cursor: cursor || (formatted_messages.length > 0 ? (formatted_messages[0].created_at || formatted_messages[0].id) : null),
+          before_id: before_id || (formatted_messages.length > 0 ? formatted_messages[0].id : null),
+          isLoadingOlder: false,
+        };
+      }
+    },
+    prependOlderMessages(state, action) {
+      const { conversation_id, messages, has_more, cursor, before_id } = action.payload;
+      const current_user_id = window.localStorage.getItem("user_id");
+      const convId = (
+        conversation_id ||
+        state.direct_chat.current_conversation?.id ||
+        state.direct_chat.current_conversation?._id
+      )?.toString();
+
+      const formatted_older = (messages || []).map((el) =>
+        formatMessageItem(el, current_user_id)
+      );
+
+      // Collect existing message IDs to prevent any duplicate messages (Requirement 8)
+      const existingIds = new Set();
+      (state.direct_chat.current_messages || []).forEach((m) => {
+        if (m.id) existingIds.add(String(m.id));
+        if (m._id) existingIds.add(String(m._id));
+        if (m.temp_id) existingIds.add(String(m.temp_id));
+      });
+
+      const uniqueOlder = formatted_older.filter((m) => {
+        const idMatch = m.id && existingIds.has(String(m.id));
+        const tempMatch = m.temp_id && existingIds.has(String(m.temp_id));
+        return !idMatch && !tempMatch;
+      });
+
+      // Merge and sort chronologically (Requirement 9)
+      const merged = [...uniqueOlder, ...state.direct_chat.current_messages];
+      merged.sort((a, b) => {
+        const tA = new Date(a.created_at).getTime();
+        const tB = new Date(b.created_at).getTime();
+        return (isNaN(tA) ? 0 : tA) - (isNaN(tB) ? 0 : tB);
+      });
+
+      state.direct_chat.current_messages = merged;
+
+      if (convId) {
+        if (!state.direct_chat.messages_by_conversation) {
+          state.direct_chat.messages_by_conversation = {};
+        }
+        state.direct_chat.messages_by_conversation[convId] = merged;
+
+        if (!state.direct_chat.pagination_by_conversation) {
+          state.direct_chat.pagination_by_conversation = {};
+        }
+        state.direct_chat.pagination_by_conversation[convId] = {
+          has_more: Boolean(has_more),
+          cursor: cursor || (uniqueOlder.length > 0 ? (uniqueOlder[0].created_at || uniqueOlder[0].id) : null),
+          before_id: before_id || (uniqueOlder.length > 0 ? uniqueOlder[0].id : null),
+          isLoadingOlder: false,
+        };
+      }
+    },
+    setLoadingOlder(state, action) {
+      const { conversation_id, isLoading } = action.payload;
+      const convId = (
+        conversation_id ||
+        state.direct_chat.current_conversation?.id ||
+        state.direct_chat.current_conversation?._id
+      )?.toString();
+      if (convId) {
+        if (!state.direct_chat.pagination_by_conversation) {
+          state.direct_chat.pagination_by_conversation = {};
+        }
+        state.direct_chat.pagination_by_conversation[convId] = {
+          ...(state.direct_chat.pagination_by_conversation[convId] || {}),
+          isLoadingOlder: Boolean(isLoading),
+        };
       }
     },
     addDirectMessage(state, action) {
@@ -456,6 +568,8 @@ const slice = createSlice({
             unread: is_current ? 0 : (c.unread || 0) + 1,
             last_msg_outgoing: isOutgoing,
             last_msg_status: message.status || (message.seen ? "seen" : "sent"),
+            last_msg_file: message.file || message.img || message.url || null,
+            last_msg_type: message.type || message.subtype || null,
           };
         } else {
           otherConvs.push(c);
@@ -476,6 +590,8 @@ const slice = createSlice({
           unread: is_current ? 0 : 1,
           last_msg_outgoing: isOutgoing,
           last_msg_status: message.status || (message.seen ? "seen" : "sent"),
+          last_msg_file: message.file || message.img || message.url || null,
+          last_msg_type: message.type || message.subtype || null,
           pinned: false,
         };
       }
@@ -660,7 +776,7 @@ const slice = createSlice({
     },
   },
   extraReducers: (builder) => {
-    builder.addCase("persist/REHYDRATE", (state) => {
+    builder.addCase("persist/REHYDRATE", (state, action) => {
       if (state.direct_chat) {
         const cached = getInitialCachedConversations();
         if (
@@ -680,8 +796,18 @@ const slice = createSlice({
         if (!state.direct_chat.messages_by_conversation) {
           state.direct_chat.messages_by_conversation = {};
         }
-        state.direct_chat.current_conversation = null;
-        state.direct_chat.current_messages = [];
+        const rehydratedCurrent =
+          action?.payload?.conversation?.direct_chat?.current_conversation ||
+          state.direct_chat.current_conversation ||
+          null;
+        state.direct_chat.current_conversation = rehydratedCurrent;
+        if (rehydratedCurrent?.id && state.direct_chat.messages_by_conversation) {
+          const convIdStr = String(rehydratedCurrent.id);
+          state.direct_chat.current_messages =
+            state.direct_chat.messages_by_conversation[convIdStr] || [];
+        } else if (!rehydratedCurrent) {
+          state.direct_chat.current_messages = [];
+        }
         state.direct_chat.open_search = false;
         state.direct_chat.search_query = "";
         state.direct_chat.replying_to = null;
@@ -742,11 +868,12 @@ export const FetchDirectConversationsFromServer = () => {
   };
 };
 
-export const AddDirectConversation = ({ conversation }) => {
+export const AddDirectConversation = ({ conversation, setCurrent = true }) => {
   return async (dispatch) => {
     dispatch(
       slice.actions.addDirectConversation({
         conversation,
+        setCurrent,
       }),
     );
   };
@@ -768,12 +895,40 @@ export const SetCurrentConversation = (current_conversation) => {
   };
 };
 
-export const FetchCurrentMessages = ({ messages, conversation_id }) => {
+export const FetchCurrentMessages = ({ messages, conversation_id, has_more, cursor, before_id }) => {
   return async (dispatch) => {
     dispatch(
       slice.actions.fetchCurrentMessages({
         messages,
         conversation_id,
+        has_more,
+        cursor,
+        before_id,
+      }),
+    );
+  };
+};
+
+export const PrependOlderMessages = ({ messages, conversation_id, has_more, cursor, before_id }) => {
+  return async (dispatch) => {
+    dispatch(
+      slice.actions.prependOlderMessages({
+        messages,
+        conversation_id,
+        has_more,
+        cursor,
+        before_id,
+      }),
+    );
+  };
+};
+
+export const SetLoadingOlder = ({ conversation_id, isLoading }) => {
+  return async (dispatch) => {
+    dispatch(
+      slice.actions.setLoadingOlder({
+        conversation_id,
+        isLoading,
       }),
     );
   };

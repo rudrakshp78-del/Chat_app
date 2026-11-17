@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import {
+  Badge,
   Box,
   Typography,
   Stack,
@@ -44,11 +45,43 @@ const Chats = () => {
   const dispatch = useDispatch();
 
   const [openDialog, setOpenDialog] = useState(false);
+  const [dialogInitialTab, setDialogInitialTab] = useState(0);
+
+  useEffect(() => {
+    const handleOpenRequestsTab = () => {
+      setDialogInitialTab(2);
+      setOpenDialog(true);
+    };
+    window.addEventListener("open_friend_requests_tab", handleOpenRequestsTab);
+    return () => {
+      window.removeEventListener(
+        "open_friend_requests_tab",
+        handleOpenRequestsTab
+      );
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!openDialog) return;
+    window.__backHandlers = window.__backHandlers || [];
+    const handler = () => {
+      setOpenDialog(false);
+      return true;
+    };
+    window.__backHandlers.push(handler);
+    return () => {
+      const idx = window.__backHandlers.indexOf(handler);
+      if (idx !== -1) window.__backHandlers.splice(idx, 1);
+    };
+  }, [openDialog]);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("all");
   const [, setFriendshipTick] = useState(0);
 
-  const { user } = useSelector((state) => state.app);
+  const { user, friendRequests = [] } = useSelector((state) => state.app);
+  const pendingRequestsCount = Array.isArray(friendRequests)
+    ? friendRequests.length
+    : 0;
   const { conversations } = useSelector(
     (state) => state.conversation.direct_chat
   );
@@ -194,6 +227,7 @@ const Chats = () => {
   };
 
   const handleOpenDialog = () => {
+    setDialogInitialTab(pendingRequestsCount > 0 ? 2 : 0);
     setOpenDialog(true);
   };
 
@@ -264,7 +298,11 @@ const Chats = () => {
             <Stack direction="row" alignItems="center" spacing={1}>
               <IconButton
                 onClick={handleOpenDialog}
-                title="Explore & Friends"
+                title={
+                  pendingRequestsCount > 0
+                    ? `${pendingRequestsCount} pending friend request(s)`
+                    : "Explore & Friends"
+                }
                 sx={{
                   p: 1.1,
                   borderRadius: 2,
@@ -280,7 +318,13 @@ const Chats = () => {
                   },
                 }}
               >
-                <Users size={20} weight="duotone" />
+                <Badge
+                  badgeContent={pendingRequestsCount}
+                  color="error"
+                  max={99}
+                >
+                  <Users size={20} weight="duotone" />
+                </Badge>
               </IconButton>
               <ProfileMenu />
             </Stack>
@@ -608,7 +652,11 @@ const Chats = () => {
       </Box>
 
       {openDialog && (
-        <Friends open={openDialog} handleClose={handleCloseDialog} />
+        <Friends
+          open={openDialog}
+          handleClose={handleCloseDialog}
+          initialTab={dialogInitialTab}
+        />
       )}
     </>
   );

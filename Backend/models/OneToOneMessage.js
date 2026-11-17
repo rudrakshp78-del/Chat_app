@@ -83,7 +83,7 @@ const oneToOneMessageSchema = new mongoose.Schema({
       ref: "User",
     },
   ],
-});
+}, { timestamps: true });
 
 oneToOneMessageSchema.index({ participants: 1 });
 oneToOneMessageSchema.index({
@@ -91,6 +91,11 @@ oneToOneMessageSchema.index({
   "messages.to": 1,
   "messages.status": 1,
 });
+// Indexes for fast message pagination and cursor queries
+oneToOneMessageSchema.index({ _id: 1, "messages.created_at": -1 });
+oneToOneMessageSchema.index({ _id: 1, "messages._id": 1 });
+oneToOneMessageSchema.index({ "messages._id": 1 });
+oneToOneMessageSchema.index({ participants: 1, "messages.created_at": -1 });
 
 const OneToOneMessage = mongoose.model(
   "OneToOneMessage",

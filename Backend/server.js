@@ -24,20 +24,25 @@ const OneToOneMessage = require("./models/OneToOneMessage");
 const AudioCall = require("./models/audioCall");
 const VideoCall = require("./models/videoCall");
 const { fetchDirectConversationsForUser } = require("./controllers/user");
+const { sendPushNotificationToUser } = require("./utils/pushNotification");
+
+const { getEmailConfigStatus } = require("./services/mailer");
 
 // ================================
-// SENDGRID
+// EMAIL CONFIGURATION DEBUG
 // ================================
 
-console.log("=== SENDGRID DEBUG ===");
-console.log("API key exists:", !!process.env.SENDGRID_API_KEY);
-console.log("API key prefix:", process.env.SENDGRID_API_KEY?.slice(0, 3));
-console.log("API key length:", process.env.SENDGRID_API_KEY?.length);
-console.log("From email:", process.env.SENDGRID_FROM_EMAIL);
-console.log("======================");
+const mailConfig = getEmailConfigStatus();
+console.log("=== EMAIL CONFIG DEBUG ===");
+console.log("Resend API:", mailConfig.hasResend ? "CONFIGURED" : "NOT SET");
+console.log("Brevo API:", mailConfig.hasBrevo ? "CONFIGURED" : "NOT SET");
+console.log("Custom SMTP:", mailConfig.hasCustomSmtp ? "CONFIGURED" : "NOT SET");
+console.log("Gmail SMTP:", mailConfig.hasGmail ? "CONFIGURED" : "NOT SET");
+console.log("SendGrid API:", mailConfig.hasSendGrid ? "CONFIGURED" : "NOT SET");
+console.log("==========================");
 
 if (process.env.SENDGRID_API_KEY) {
-  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY.trim());
 }
 
 // ================================
@@ -97,10 +102,11 @@ console.log("MongoDB URI:", DB.replace(process.env.DBPASSWORD, "********"));
 
 async function startServer() {
   try {
+    try { dns.setServers(["8.8.8.8", "8.8.4.4"]); } catch (e) {}
     console.log("Connecting to MongoDB...");
 
     await mongoose.connect(DB, {
-      serverSelectionTimeoutMS: 10000,
+      serverSelectionTimeoutMS: 25000,
     });
 
     console.log("✅ MongoDB connection successful!");
@@ -131,18 +137,84 @@ async function startServer() {
     });
 
     // ================================
+    // SOCKET AUTHENTICATION MIDDLEWARE
+    // ================================
+
+    io.use(async (socket, next) => {
+      try {
+        const token =
+          socket.handshake.auth?.token ||
+          socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, "") ||
+          socket.handshake.query?.token;
+        const queryUserId = socket.handshake.query?.user_id;
+
+        if (token) {
+          try {
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            socket.user_id = decoded.userId.toString();
+            return next();
+          } catch (err) {
+            if (err.name === "TokenExpiredError") {
+              // Token expired: verify that cryptographic signature is authentic
+              try {
+                const decoded = jwt.verify(token, process.env.JWT_SECRET, {
+                  ignoreExpiration: true,
+                });
+                const user = await User.findById(decoded.userId).select("+passwordChangedAt");
+                if (user && !user.changedPasswordAfter(decoded.iat)) {
+                  socket.user_id = decoded.userId.toString();
+                  socket.shouldEmitRefreshedToken = true;
+                  return next();
+                }
+              } catch (inner) {}
+            }
+          }
+        }
+
+        if (queryUserId && mongoose.Types.ObjectId.isValid(queryUserId)) {
+          socket.user_id = queryUserId.toString();
+          return next();
+        }
+
+        return next(new Error("Authentication error: Token required"));
+      } catch (err) {
+        console.error("Socket authentication error:", err);
+        return next(new Error("Authentication error"));
+      }
+    });
+
+    // ================================
     // SOCKET CONNECTION
     // ================================
 
     io.on("connection", async (socket) => {
       try {
-        const user_id = socket.handshake.query["user_id"];
+        const user_id = socket.user_id || socket.handshake.query["user_id"];
         const socket_id = socket.id;
 
         console.log(`User connected: ${socket_id}`);
         console.log(`User ID: ${user_id}`);
 
         socket.user_id = user_id ? user_id.toString() : null;
+
+        if (socket.shouldEmitRefreshedToken && socket.user_id) {
+          const freshToken = jwt.sign(
+            { userId: socket.user_id },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN || "90d" }
+          );
+          socket.emit("token_refreshed", { token: freshToken, user_id: socket.user_id });
+        }
+
+        socket.on("update_socket_token", (data) => {
+          try {
+            const t = data?.token;
+            if (t) {
+              const dec = jwt.verify(t, process.env.JWT_SECRET, { ignoreExpiration: true });
+              socket.user_id = dec.userId.toString();
+            }
+          } catch (e) {}
+        });
 
         let initializedUserId = null;
 
@@ -242,6 +314,26 @@ async function startServer() {
           }
         });
 
+        socket.on("heartbeat", (data) => {
+          const uid = (data?.user_id || socket.user_id)?.toString();
+          if (uid) {
+            socket.emit("heartbeat_ack", { time: Date.now() });
+          }
+        });
+
+        socket.on("save_fcm_token", async (data) => {
+          try {
+            const uid = (data?.user_id || socket.user_id)?.toString();
+            const token = data?.fcm_token;
+            if (uid && token && mongoose.Types.ObjectId.isValid(uid)) {
+              await User.findByIdAndUpdate(uid, { fcm_token: token });
+              console.log(`Saved FCM push token for user: ${uid}`);
+            }
+          } catch (e) {
+            console.error("save_fcm_token error:", e);
+          }
+        });
+
         // ========================================
         // FRIEND REQUEST
         // ========================================
@@ -250,17 +342,41 @@ async function startServer() {
           try {
             console.log("Friend request received:", data);
 
-            const to = await User.findById(data.to).select("socket_id");
-
-            const fromUser = await User.findById(data.from).select("socket_id");
-
-            if (!to) {
-              console.log("Recipient user not found");
+            if (!data?.from || !data?.to || data.from.toString() === data.to.toString()) {
               return;
             }
 
-            if (!fromUser) {
-              console.log("Sender user not found");
+            const [to, fromUser] = await Promise.all([
+              User.findById(data.to).select("socket_id friends blocked_users"),
+              User.findById(data.from).select("socket_id firstName lastName avatar friends blocked_users"),
+            ]);
+
+            if (!to || !fromUser) {
+              console.log("Recipient or sender user not found");
+              return;
+            }
+
+            // Check if already friends
+            if (fromUser.friends && fromUser.friends.some((f) => f.toString() === data.to.toString())) {
+              io.to(data.from.toString()).emit("request_sent", {
+                message: "You are already friends!",
+              });
+              return;
+            }
+
+            // Prevent duplicate pending requests in either direction
+            const existingRequest = await FriendRequest.findOne({
+              $or: [
+                { sender: data.from, recipient: data.to },
+                { sender: data.to, recipient: data.from },
+              ],
+            });
+
+            if (existingRequest) {
+              io.to(data.from.toString()).emit("request_sent", {
+                message: "Friend request is already pending",
+                request_id: existingRequest._id,
+              });
               return;
             }
 
@@ -276,25 +392,57 @@ async function startServer() {
             console.log("Friend request created:", request._id.toString());
 
             // ========================================
-            // NOTIFY RECIPIENT
+            // NOTIFY RECIPIENT (deduplicated)
             // ========================================
 
-            if (to.socket_id) {
-              io.to(to.socket_id).emit("new_friend_request", {
-                message: "New friend request received",
-                request_id: request._id,
-              });
+            const requesterName =
+              `${fromUser.firstName || ""} ${fromUser.lastName || ""}`.trim() ||
+              "Someone";
+            const requestPayload = {
+              message: `${requesterName} sent you a friend request`,
+              request_id: request._id,
+              sender: {
+                _id: fromUser._id,
+                firstName: fromUser.firstName,
+                lastName: fromUser.lastName,
+                avatar: fromUser.avatar,
+              },
+            };
+
+            const recipientRoom = data.to.toString();
+            const recipientSockets = await io.in(recipientRoom).fetchSockets();
+            if (recipientSockets && recipientSockets.length > 0) {
+              io.to(recipientRoom).emit("new_friend_request", requestPayload);
+            } else if (to.socket_id) {
+              io.to(to.socket_id).emit("new_friend_request", requestPayload);
             }
 
+            // Send FCM Push Notification for new friend request
+            sendPushNotificationToUser({
+              userId: data.to,
+              title: "New Friend Request",
+              body: `👋 ${requesterName} sent you a friend request`,
+              data: {
+                type: "friend_request",
+                request_id: (request._id || "").toString(),
+                sender_id: (data.from || "").toString(),
+              },
+            }).catch((e) => console.warn("Push error in friend_request:", e.message));
+
             // ========================================
-            // NOTIFY SENDER
+            // NOTIFY SENDER (deduplicated)
             // ========================================
 
-            if (fromUser.socket_id) {
-              io.to(fromUser.socket_id).emit("request_sent", {
-                message: "Request sent successfully!",
-                request_id: request._id,
-              });
+            const senderRoom = data.from.toString();
+            const senderSockets = await io.in(senderRoom).fetchSockets();
+            const sentPayload = {
+              message: "Request sent successfully!",
+              request_id: request._id,
+            };
+            if (senderSockets && senderSockets.length > 0) {
+              io.to(senderRoom).emit("request_sent", sentPayload);
+            } else if (fromUser.socket_id) {
+              io.to(fromUser.socket_id).emit("request_sent", sentPayload);
             }
           } catch (err) {
             console.error("friend_request error:", err);
@@ -316,10 +464,7 @@ async function startServer() {
               return;
             }
 
-            console.log("Friend request:", requestDoc);
-
             const sender = await User.findById(requestDoc.sender);
-
             const receiver = await User.findById(requestDoc.recipient);
 
             if (!sender || !receiver) {
@@ -328,19 +473,25 @@ async function startServer() {
             }
 
             // ========================================
-            // ADD FRIENDS
+            // ADD FRIENDS (safe string ObjectId comparison)
             // ========================================
 
-            if (!sender.friends.includes(requestDoc.recipient)) {
+            const recipientIdStr = requestDoc.recipient.toString();
+            const senderIdStr = requestDoc.sender.toString();
+
+            if (
+              !sender.friends.some((id) => id.toString() === recipientIdStr)
+            ) {
               sender.friends.push(requestDoc.recipient);
             }
 
-            if (!receiver.friends.includes(requestDoc.sender)) {
+            if (
+              !receiver.friends.some((id) => id.toString() === senderIdStr)
+            ) {
               receiver.friends.push(requestDoc.sender);
             }
 
-            await sender.save();
-            await receiver.save();
+            await Promise.all([sender.save(), receiver.save()]);
 
             // ========================================
             // DELETE FRIEND REQUEST
@@ -349,28 +500,195 @@ async function startServer() {
             await FriendRequest.findByIdAndDelete(data.request_id);
 
             // ========================================
-            // NOTIFY SENDER
+            // AUTO-CREATE / RESTORE CONVERSATION SO BOTH USERS APPEAR IN CHAT LIST DIRECTLY
             // ========================================
 
-            if (sender.socket_id) {
-              io.to(sender.socket_id).emit("request_accepted", {
-                message: "Friend request accepted",
+            let conversation = await OneToOneMessage.findOne(
+              { participants: { $size: 2, $all: [sender._id, receiver._id] } },
+              { messages: { $slice: -25 } }
+            ).populate(
+              "participants",
+              "firstName lastName _id email status avatar about links"
+            );
+
+            if (!conversation) {
+              const newChat = await OneToOneMessage.create({
+                participants: [sender._id, receiver._id],
+                messages: [],
               });
+              conversation = await OneToOneMessage.findById(
+                newChat._id
+              ).populate(
+                "participants",
+                "firstName lastName _id email status avatar about links"
+              );
+            } else if (
+              Array.isArray(conversation.deleted_for) &&
+              conversation.deleted_for.length > 0
+            ) {
+              conversation.deleted_for = [];
+              await conversation.save();
             }
 
+            const conversationObj = conversation
+              ? conversation.toObject
+                ? conversation.toObject()
+                : JSON.parse(JSON.stringify(conversation))
+              : null;
+
+            const senderName =
+              `${sender.firstName || ""} ${sender.lastName || ""}`.trim() ||
+              "User";
+            const receiverName =
+              `${receiver.firstName || ""} ${receiver.lastName || ""}`.trim() ||
+              "User";
+
+            const acceptedBy = {
+              _id: receiver._id,
+              firstName: receiver.firstName,
+              lastName: receiver.lastName,
+              avatar: receiver.avatar,
+            };
+
+            const senderPayload = {
+              message: `${receiverName} accepted your friend request!`,
+              request_id: data.request_id,
+              friend_id: receiver._id,
+              accepted_by: acceptedBy,
+              conversation: conversationObj,
+            };
+
+            const receiverPayload = {
+              message: `You and ${senderName} are now connected in chats!`,
+              request_id: data.request_id,
+              friend_id: sender._id,
+              accepted_by: acceptedBy,
+              conversation: conversationObj,
+            };
+
             // ========================================
-            // NOTIFY RECEIVER
+            // NOTIFY BOTH PARTIES (deduplicated)
             // ========================================
 
-            if (receiver.socket_id) {
-              io.to(receiver.socket_id).emit("request_accepted", {
-                message: "Friend request accepted",
-              });
+            const senderRoomSockets = await io.in(senderIdStr).fetchSockets();
+            if (senderRoomSockets && senderRoomSockets.length > 0) {
+              io.to(senderIdStr).emit("request_accepted", senderPayload);
+            } else if (sender.socket_id) {
+              io.to(sender.socket_id).emit("request_accepted", senderPayload);
             }
 
-            console.log("✅ Friend request accepted");
+            const receiverRoomSockets = await io.in(recipientIdStr).fetchSockets();
+            if (receiverRoomSockets && receiverRoomSockets.length > 0) {
+              io.to(recipientIdStr).emit("request_accepted", receiverPayload);
+            } else if (receiver.socket_id) {
+              io.to(receiver.socket_id).emit("request_accepted", receiverPayload);
+            }
+
+            // Send FCM Push Notification to original requester
+            sendPushNotificationToUser({
+              userId: sender._id,
+              title: "Friend Request Accepted",
+              body: `✅ ${receiverName} accepted your friend request! Start chatting now.`,
+              data: {
+                type: "request_accepted",
+                conversation_id: (conversationObj?._id || "").toString(),
+                friend_id: recipientIdStr,
+              },
+            }).catch((e) =>
+              console.warn("Push error in accept_request:", e.message)
+            );
+
+            console.log(
+              "✅ Friend request accepted & conversation ready:",
+              conversationObj?._id?.toString()
+            );
           } catch (err) {
             console.error("accept_request error:", err);
+          }
+        });
+
+        // Reject Friend Request
+        socket.on("reject_request", async (data) => {
+          try {
+            const { request_id } = data || {};
+            if (!request_id) return;
+            const reqDoc = await FriendRequest.findById(request_id);
+            if (reqDoc) {
+              const { sender, recipient } = reqDoc;
+              await FriendRequest.findByIdAndDelete(request_id);
+              io.to(sender.toString()).emit("request_rejected", { request_id });
+              io.to(recipient.toString()).emit("request_rejected", { request_id });
+            }
+          } catch (e) {
+            console.error("reject_request error:", e);
+          }
+        });
+
+        // Cancel Friend Request
+        socket.on("cancel_request", async (data) => {
+          try {
+            const { request_id, to, from } = data || {};
+            let reqDoc = null;
+            if (request_id) {
+              reqDoc = await FriendRequest.findById(request_id);
+            } else if (to && from) {
+              reqDoc = await FriendRequest.findOne({ sender: from, recipient: to });
+            }
+            if (reqDoc) {
+              const { sender, recipient } = reqDoc;
+              await FriendRequest.findByIdAndDelete(reqDoc._id);
+              io.to(sender.toString()).emit("request_cancelled", { request_id: reqDoc._id });
+              io.to(recipient.toString()).emit("request_cancelled", { request_id: reqDoc._id });
+            }
+          } catch (e) {
+            console.error("cancel_request error:", e);
+          }
+        });
+
+        // Remove Friend
+        socket.on("remove_friend", async (data) => {
+          try {
+            const { user_id: targetUserId, from: currentUserId } = data || {};
+            const uid1 = currentUserId || socket.user_id;
+            const uid2 = targetUserId;
+            if (uid1 && uid2) {
+              await Promise.all([
+                User.findByIdAndUpdate(uid1, { $pull: { friends: uid2 } }),
+                User.findByIdAndUpdate(uid2, { $pull: { friends: uid1 } }),
+              ]);
+              io.to(uid1.toString()).emit("friend_removed", { friend_id: uid2 });
+              io.to(uid2.toString()).emit("friend_removed", { friend_id: uid1 });
+            }
+          } catch (e) {
+            console.error("remove_friend error:", e);
+          }
+        });
+
+        // Block User
+        socket.on("block_user", async (data) => {
+          try {
+            const { target_user_id } = data || {};
+            const myId = socket.user_id;
+            if (myId && target_user_id && myId.toString() !== target_user_id.toString()) {
+              await User.findByIdAndUpdate(myId, { $addToSet: { blocked_users: target_user_id } });
+              socket.emit("user_blocked", { target_user_id });
+            }
+          } catch (e) {
+            console.error("block_user error:", e);
+          }
+        });
+
+        // Unblock User
+        socket.on("unblock_user", async (data) => {
+          try {
+            const { target_user_id } = data || {};
+            const myId = socket.user_id;
+            if (myId && target_user_id) {
+              await User.findByIdAndUpdate(myId, { $pull: { blocked_users: target_user_id } });
+              socket.emit("user_unblocked", { target_user_id });
+            }
+          } catch (e) {
+            console.error("unblock_user error:", e);
           }
         });
 
@@ -446,10 +764,11 @@ async function startServer() {
               status: "Online",
             });
 
-            // check if there is any existing conversation between these users 
-            let existing_conversation = await OneToOneMessage.findOne({
-              participants: { $size: 2, $all: [to, from] },
-            }).populate("participants", "firstName lastName _id email status avatar about links");
+            // check if there is any existing conversation between these users (slice messages to latest 30 for speed)
+            let existing_conversation = await OneToOneMessage.findOne(
+              { participants: { $size: 2, $all: [to, from] } },
+              { messages: { $slice: -30 } }
+            ).populate("participants", "firstName lastName _id email status avatar about links");
 
             console.log("Existing Conversation:", existing_conversation ? existing_conversation._id : null);
 
@@ -479,6 +798,9 @@ async function startServer() {
                   }
                   return true;
                 });
+                if (obj.messages.length > 25) {
+                  obj.messages = obj.messages.slice(-25);
+                }
               }
               obj.initiated_by = from.toString();
               return obj;
@@ -505,62 +827,167 @@ async function startServer() {
 
         socket.on("get_messages", async (data, callback) => {
           try {
-            if (!data?.conversation_id) {
-              if (typeof callback === "function") callback([]);
+            if (!data?.conversation_id || !mongoose.Types.ObjectId.isValid(data.conversation_id)) {
+              if (typeof callback === "function") {
+                callback({ messages: [], has_more: false, cursor: null, before_id: null });
+              }
               return;
             }
 
             const currentUserId = (socket.user_id || user_id || data?.user_id)?.toString();
-            const chat = await OneToOneMessage.findById(data.conversation_id);
+            const matchId = new mongoose.Types.ObjectId(data.conversation_id);
+            const userObjId = currentUserId && mongoose.Types.ObjectId.isValid(currentUserId)
+              ? new mongoose.Types.ObjectId(currentUserId)
+              : null;
 
-            if (chat && currentUserId) {
-              let hasUnseen = false;
-              chat.messages.forEach((msg) => {
-                const msgToStr = (msg.to?._id || msg.to)?.toString();
-                if (
-                  msgToStr === currentUserId &&
-                  !msg.seen &&
-                  msg.status !== "seen"
-                ) {
-                  msg.seen = true;
-                  msg.status = "seen";
-                  msg.seen_at = new Date();
-                  hasUnseen = true;
-                }
+            // Clamp limit between 1 and 50 (default: 25)
+            const limit = Math.min(Math.max(parseInt(data?.limit, 10) || 25, 1), 50);
+
+            // Parse cursor (before created_at timestamp and/or before_id)
+            const before = data?.before;
+            const before_id = data?.before_id;
+            let beforeDate = null;
+            if (before && !isNaN(new Date(before).getTime())) {
+              beforeDate = new Date(before);
+            }
+            let beforeObjId = null;
+            if (before_id && mongoose.Types.ObjectId.isValid(before_id)) {
+              beforeObjId = new mongoose.Types.ObjectId(before_id);
+            } else if (before && mongoose.Types.ObjectId.isValid(before)) {
+              beforeObjId = new mongoose.Types.ObjectId(before);
+            }
+
+            // Build filter condition for MongoDB aggregation
+            const filterConditions = [];
+            if (userObjId) {
+              filterConditions.push({
+                $not: {
+                  $in: [userObjId, { $ifNull: ["$$msg.deleted_for", []] }],
+                },
               });
+            }
 
-              if (hasUnseen) {
-                await chat.save({ validateModifiedOnly: true });
+            if (beforeDate) {
+              if (beforeObjId) {
+                filterConditions.push({
+                  $or: [
+                    { $lt: ["$$msg.created_at", beforeDate] },
+                    {
+                      $and: [
+                        { $eq: ["$$msg.created_at", beforeDate] },
+                        { $lt: ["$$msg._id", beforeObjId] },
+                      ],
+                    },
+                  ],
+                });
+              } else {
+                filterConditions.push({ $lt: ["$$msg.created_at", beforeDate] });
+              }
+            } else if (beforeObjId) {
+              filterConditions.push({ $lt: ["$$msg._id", beforeObjId] });
+            }
 
-                // Notify other participants in real-time
-                chat.participants.forEach((pId) => {
-                  const pStr = (pId?._id || pId)?.toString();
-                  if (pStr !== currentUserId) {
-                    io.to(pStr).emit("messages_seen", {
-                      conversation_id: chat._id,
+            const cond = filterConditions.length > 1
+              ? { $and: filterConditions }
+              : (filterConditions[0] || { $literal: true });
+
+            // Efficient aggregation pipeline: filter deleted_for & cursor, count total, and slice last N
+            const aggResult = await OneToOneMessage.aggregate([
+              { $match: { _id: matchId } },
+              {
+                $project: {
+                  participants: 1,
+                  filtered_messages: {
+                    $filter: {
+                      input: { $ifNull: ["$messages", []] },
+                      as: "msg",
+                      cond: cond,
+                    },
+                  },
+                },
+              },
+              {
+                $project: {
+                  participants: 1,
+                  total_count: { $size: "$filtered_messages" },
+                  messages: { $slice: ["$filtered_messages", -limit] },
+                },
+              },
+            ]);
+
+            if (!aggResult || aggResult.length === 0) {
+              if (typeof callback === "function") {
+                callback({ messages: [], has_more: false, cursor: null, before_id: null });
+              }
+              return;
+            }
+
+            const convDoc = aggResult[0];
+            const messages = convDoc.messages || [];
+            const totalCount = convDoc.total_count || 0;
+            const hasMore = totalCount > messages.length;
+            const oldestMsg = messages.length > 0 ? messages[0] : null;
+            const nextCursor = oldestMsg
+              ? (oldestMsg.created_at ? new Date(oldestMsg.created_at).toISOString() : oldestMsg._id?.toString())
+              : null;
+            const nextBeforeId = oldestMsg?._id ? oldestMsg._id.toString() : null;
+
+            // Background non-blocking atomic update to mark unseen messages for recipient
+            if (userObjId) {
+              OneToOneMessage.updateOne(
+                { _id: matchId },
+                {
+                  $set: {
+                    "messages.$[elem].seen": true,
+                    "messages.$[elem].status": "seen",
+                    "messages.$[elem].seen_at": new Date(),
+                  },
+                },
+                {
+                  arrayFilters: [
+                    {
+                      "elem.to": userObjId,
+                      "elem.seen": { $ne: true },
+                    },
+                  ],
+                }
+              )
+                .then((updateRes) => {
+                  if (updateRes.modifiedCount > 0) {
+                    (convDoc.participants || []).forEach((pId) => {
+                      const pStr = (pId?._id || pId)?.toString();
+                      if (pStr && pStr !== currentUserId) {
+                        io.to(pStr).emit("messages_seen", {
+                          conversation_id: matchId.toString(),
+                          reader_id: currentUserId,
+                        });
+                      }
+                    });
+                    io.to(currentUserId).emit("messages_seen", {
+                      conversation_id: matchId.toString(),
                       reader_id: currentUserId,
                     });
                   }
+                })
+                .catch((err) => {
+                  console.error("Background mark seen error in get_messages:", err);
                 });
-              }
             }
 
-            const messages = (chat?.messages || []).filter((msg) => {
-              if (currentUserId && msg.deleted_for && Array.isArray(msg.deleted_for)) {
-                return !msg.deleted_for.some(
-                  (uid) => (uid?._id || uid)?.toString() === currentUserId
-                );
-              }
-              return true;
-            });
+            const responsePayload = {
+              messages,
+              has_more: hasMore,
+              cursor: nextCursor,
+              before_id: nextBeforeId,
+            };
 
             if (typeof callback === "function") {
-              callback(messages);
+              callback(responsePayload);
             }
           } catch (err) {
             console.error("get_messages error:", err);
             if (typeof callback === "function") {
-              callback([]);
+              callback({ messages: [], has_more: false, cursor: null, before_id: null });
             }
           }
         });
@@ -654,9 +1081,18 @@ async function startServer() {
 
             // Fetch to_user and from_user in parallel for maximum speed
             const [to_user, from_user] = await Promise.all([
-              User.findById(to).select("firstName lastName avatar socket_id status"),
-              User.findById(from).select("firstName lastName avatar socket_id status"),
+              User.findById(to).select("firstName lastName avatar socket_id status blocked_users"),
+              User.findById(from).select("firstName lastName avatar socket_id status blocked_users"),
             ]);
+
+            // Privacy & Block protection: drop message if blocked
+            if (
+              to_user?.blocked_users?.some((b) => b.toString() === from.toString()) ||
+              from_user?.blocked_users?.some((b) => b.toString() === to.toString())
+            ) {
+              console.log(`Message dropped: blocked between ${from} and ${to}`);
+              return;
+            }
 
             const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
@@ -712,20 +1148,21 @@ async function startServer() {
               sender: senderInfo,
             };
 
-            // EMIT IMMEDIATELY TO SENDER AND RECIPIENT WITHOUT DELAY
+            // EMIT ONCE TO SENDER AND RECIPIENT
             socket.emit("new_message", payload);
-            io.to(from.toString()).emit("new_message", payload);
+            socket.to(from.toString()).emit("new_message", payload);
             io.to(to.toString()).emit("new_message", payload);
 
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", payload);
-            }
-
-            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
-              io.to(from_user.socket_id).emit("new_message", payload);
-            }
-
-            // Keep sender's socket_id up-to-date asynchronously in background
+            // Send FCM Push Notification so device rings and updates badge when app is closed / on home screen
+            sendPushNotificationToUser({
+              userId: to,
+              title: senderInfo.name || "Trackon",
+              body: message || "New message received",
+              data: {
+                conversation_id: (chat?._id || data.conversation_id || "").toString(),
+                sender_id: from.toString(),
+              },
+            }).catch((e) => console.warn("Push error in text_message:", e.message));
             if (from) {
               User.findByIdAndUpdate(from, {
                 socket_id: socket.id,
@@ -764,9 +1201,18 @@ async function startServer() {
 
             // Fetch to_user and from_user in parallel for maximum speed
             const [to_user, from_user] = await Promise.all([
-              User.findById(to).select("firstName lastName avatar socket_id status"),
-              User.findById(from).select("firstName lastName avatar socket_id status"),
+              User.findById(to).select("firstName lastName avatar socket_id status blocked_users"),
+              User.findById(from).select("firstName lastName avatar socket_id status blocked_users"),
             ]);
+
+            // Privacy & Block protection: drop message if blocked
+            if (
+              to_user?.blocked_users?.some((b) => b.toString() === from.toString()) ||
+              from_user?.blocked_users?.some((b) => b.toString() === to.toString())
+            ) {
+              console.log(`Message dropped: blocked between ${from} and ${to}`);
+              return;
+            }
 
             const isRecipientOnline = to_user?.status === "Online" && Boolean(to_user?.socket_id);
 
@@ -825,20 +1271,28 @@ async function startServer() {
               sender: senderInfo,
             };
 
-            // EMIT IMMEDIATELY TO SENDER AND RECIPIENT WITHOUT DELAY
+            // EMIT ONCE TO SENDER AND RECIPIENT
             socket.emit("new_message", payload);
-            io.to(from.toString()).emit("new_message", payload);
+            socket.to(from.toString()).emit("new_message", payload);
             io.to(to.toString()).emit("new_message", payload);
 
-            if (to_user?.socket_id) {
-              io.to(to_user.socket_id).emit("new_message", payload);
+            // Send FCM Push Notification so device rings and updates badge when app is closed / on home screen
+            let fileNotifBody = text || "";
+            if (!fileNotifBody) {
+              if (type === "Voice" || type === "Audio") fileNotifBody = "🎤 Voice message";
+              else if (type === "Media") fileNotifBody = "📷 Photo";
+              else if (type === "Document") fileNotifBody = `📁 Document: ${fileName || "File"}`;
+              else fileNotifBody = "New attachment received";
             }
-
-            if (from_user?.socket_id && from_user.socket_id !== socket.id) {
-              io.to(from_user.socket_id).emit("new_message", payload);
-            }
-
-            // Keep sender's socket_id up-to-date asynchronously in background
+            sendPushNotificationToUser({
+              userId: to,
+              title: senderInfo.name || "Trackon",
+              body: fileNotifBody,
+              data: {
+                conversation_id: (chat?._id || data.conversation_id || "").toString(),
+                sender_id: from.toString(),
+              },
+            }).catch((e) => console.warn("Push error in file_message:", e.message));
             if (from) {
               User.findByIdAndUpdate(from, {
                 socket_id: socket.id,
@@ -1203,8 +1657,21 @@ async function startServer() {
             msg.reaction = msg.reaction === reaction ? "" : (reaction || "");
             await chat.save({ validateModifiedOnly: true });
 
-            // Notify both participants
+            // Notify both participants via room and socket
             for (const participantId of chat.participants) {
+              const pStr = (participantId?._id || participantId)?.toString();
+              if (pStr) {
+                io.to(pStr).emit("message_reacted", {
+                  conversation_id,
+                  message_id,
+                  reaction: msg.reaction,
+                });
+                io.to(pStr).emit("message_reaction", {
+                  conversation_id,
+                  message_id,
+                  reaction: msg.reaction,
+                });
+              }
               const user = await User.findById(participantId).select("socket_id");
               if (user?.socket_id) {
                 io.to(user.socket_id).emit("message_reacted", {
@@ -1239,8 +1706,16 @@ async function startServer() {
             msg.starred = !msg.starred;
             await chat.save({ validateModifiedOnly: true });
 
-            // Notify both participants
+            // Notify both participants via room and socket
             for (const participantId of chat.participants) {
+              const pStr = (participantId?._id || participantId)?.toString();
+              if (pStr) {
+                io.to(pStr).emit("message_starred", {
+                  conversation_id,
+                  message_id,
+                  starred: msg.starred,
+                });
+              }
               const user = await User.findById(participantId).select("socket_id");
               if (user?.socket_id) {
                 io.to(user.socket_id).emit("message_starred", {
@@ -1356,8 +1831,31 @@ async function startServer() {
               socket.join(`call_${roomID}`);
             }
 
-            const to_user = await User.findById(to);
-            const from_user = await User.findById(from);
+            const to_user = await User.findById(to).select("firstName lastName avatar socket_id status blocked_users");
+            const from_user = await User.findById(from).select("firstName lastName avatar socket_id status blocked_users");
+
+            if (
+              to_user?.blocked_users?.some((b) => b.toString() === from.toString()) ||
+              from_user?.blocked_users?.some((b) => b.toString() === to.toString())
+            ) {
+              socket.emit("user_is_busy_audio_call", { ...data });
+              return;
+            }
+            const callerName = `${from_user?.firstName || ""} ${from_user?.lastName || ""}`.trim() || "Trackon";
+
+            io.to(to.toString()).emit("audio_call_notification", {
+              call_id: roomID,
+              roomID,
+              streamID: from.toString(),
+              userID: to.toString(),
+              userName: `${to_user?.firstName || ""} ${to_user?.lastName || ""}`.trim(),
+              from_user,
+              to_user,
+              caller_name: callerName,
+              caller_avatar: from_user?.avatar || "",
+              caller_id: from.toString(),
+              call_type: "audio",
+            });
 
             const delivered = await emitToUser(
               to,
@@ -1370,13 +1868,42 @@ async function startServer() {
                 userName: `${to_user?.firstName || ""} ${to_user?.lastName || ""}`.trim(),
                 from_user,
                 to_user,
+                caller_name: callerName,
+                caller_avatar: from_user?.avatar || "",
+                caller_id: from.toString(),
+                call_type: "audio",
               },
               socket.id
             );
 
+            // Send FCM Push Notification so recipient device wakes & rings even on home screen or when app is closed
+            sendPushNotificationToUser({
+              userId: to,
+              title: "Incoming Audio Call",
+              body: `📞 ${callerName} is calling you...`,
+              data: {
+                type: "incoming_call",
+                call_type: "audio",
+                roomID: (roomID || "").toString(),
+                caller_id: from.toString(),
+                caller_name: callerName,
+                caller_avatar: from_user?.avatar || "",
+              },
+              channelId: "trackon_call_channel_v1",
+            }).catch((e) => console.warn("Push error in start_audio_call:", e.message));
+
             if (!delivered) {
-              // recipient is offline
-              socket.emit("audio_call_missed", { to, from, roomID, call_id: roomID });
+              // Recipient socket is not currently connected.
+              // Push notification was sent to wake the phone. Wait for 35s ring window instead of instant abort.
+              setTimeout(async () => {
+                try {
+                  const callDoc = await AudioCall.findById(roomID).catch(() => null);
+                  if (callDoc && callDoc.verdict !== "Accepted" && callDoc.verdict !== "Denied") {
+                    socket.emit("audio_call_missed", { to, from, roomID, call_id: roomID });
+                    await AudioCall.findByIdAndUpdate(roomID, { status: "Ended", verdict: "Missed" }).catch(() => {});
+                  }
+                } catch (e) {}
+              }, 35000);
             }
           } catch (err) {
             console.error("start_audio_call error:", err);
@@ -1394,8 +1921,17 @@ async function startServer() {
               socket.join(`call_${roomID}`);
             }
 
-            const to_user = await User.findById(to);
-            const from_user = await User.findById(from);
+            const to_user = await User.findById(to).select("firstName lastName avatar socket_id status blocked_users");
+            const from_user = await User.findById(from).select("firstName lastName avatar socket_id status blocked_users");
+
+            if (
+              to_user?.blocked_users?.some((b) => b.toString() === from.toString()) ||
+              from_user?.blocked_users?.some((b) => b.toString() === to.toString())
+            ) {
+              socket.emit("user_is_busy_video_call", { ...data });
+              return;
+            }
+            const callerName = `${from_user?.firstName || ""} ${from_user?.lastName || ""}`.trim() || "Trackon";
 
             const delivered = await emitToUser(
               to,
@@ -1408,13 +1944,42 @@ async function startServer() {
                 userName: `${to_user?.firstName || ""} ${to_user?.lastName || ""}`.trim(),
                 from_user,
                 to_user,
+                caller_name: callerName,
+                caller_avatar: from_user?.avatar || "",
+                caller_id: from.toString(),
+                call_type: "video",
               },
               socket.id
             );
 
+            // Send FCM Push Notification so recipient device wakes & rings even on home screen or when app is closed
+            sendPushNotificationToUser({
+              userId: to,
+              title: "Incoming Video Call",
+              body: `📹 ${callerName} is video calling you...`,
+              data: {
+                type: "incoming_call",
+                call_type: "video",
+                roomID: (roomID || "").toString(),
+                caller_id: from.toString(),
+                caller_name: callerName,
+                caller_avatar: from_user?.avatar || "",
+              },
+              channelId: "trackon_call_channel_v1",
+            }).catch((e) => console.warn("Push error in start_video_call:", e.message));
+
             if (!delivered) {
-              // recipient is offline
-              socket.emit("video_call_missed", { to, from, roomID, call_id: roomID });
+              // Recipient socket is not currently connected.
+              // Push notification was sent to wake the phone. Wait for 35s ring window instead of instant abort.
+              setTimeout(async () => {
+                try {
+                  const callDoc = await VideoCall.findById(roomID).catch(() => null);
+                  if (callDoc && callDoc.verdict !== "Accepted" && callDoc.verdict !== "Denied") {
+                    socket.emit("video_call_missed", { to, from, roomID, call_id: roomID });
+                    await VideoCall.findByIdAndUpdate(roomID, { status: "Ended", verdict: "Missed" }).catch(() => {});
+                  }
+                } catch (e) {}
+              }, 35000);
             }
           } catch (err) {
             console.error("start_video_call error:", err);

@@ -10,16 +10,31 @@ import BottomNav from "./BottomNav";
 import InAppNotification from "../../components/InAppNotification";
 import FirstTimeNotificationDialog from "../../components/FirstTimeNotificationDialog";
 import PullToRefresh from "../../components/PullToRefresh";
-import { playNotificationChime } from "../../utils/notification";
+import {
+  playNotificationChime,
+  showOutsideNotification,
+  updateAppBadge,
+  clearConversationNotification,
+  requestNotificationPermission,
+  unlockAudio,
+} from "../../utils/notification";
+import { initPushNotifications } from "../../utils/pushNotification";
 
 import {
   CloseSidebar,
+  FetchFriendRequests,
+  FetchFriends,
   FetchUserProfile,
+  FetchUsers,
   SelectConversation,
+  UpdateSidebarType,
   showSnackbar,
 } from "../../redux/slices/app";
 
 import { socket, connectSocket } from "../../socket";
+import axios from "../../utils/axios";
+import { BASE_URL } from "../../config";
+import { updateToken } from "../../redux/slices/auth";
 
 import {
   FetchDirectConversations,
@@ -41,12 +56,14 @@ import {
   CloseAudioNotificationDialog,
   PushToAudioCallQueue,
   UpdateAudioCallDialog,
+  ResetAudioCallQueue,
 } from "../../redux/slices/audioCall";
 
 import {
   CloseVideoNotificationDialog,
   PushToVideoCallQueue,
   UpdateVideoCallDialog,
+  ResetVideoCallQueue,
 } from "../../redux/slices/videoCall";
 
 import AudioCallNotification from "../../sections/dashboard/Audio/CallNotification";
@@ -55,7 +72,7 @@ import VideoCallNotification from "../../sections/dashboard/video/CallNotificati
 import AudioCallDialog from "../../sections/dashboard/Audio/CallDialog";
 import VideoCallDialog from "../../sections/dashboard/video/CallDialog";
 import { FetchAllStatuses } from "../../redux/slices/status";
-import { showOutsideNotification } from "../../utils/notification";
+
 import { isConversationMuted } from "../../utils/muteHelpers";
 
 const DashboardLayout = () => {
@@ -90,6 +107,9 @@ const DashboardLayout = () => {
   const room_id_ref = useRef(room_id);
   useEffect(() => {
     room_id_ref.current = room_id;
+    if (room_id) {
+      clearConversationNotification(room_id);
+    }
   }, [room_id]);
 
   const sideBar_ref = useRef(sideBar);
@@ -102,22 +122,72 @@ const DashboardLayout = () => {
     pathname_ref.current = location.pathname;
   }, [location.pathname]);
 
-  // Handle Android hardware / gesture back button inside mobile chat, contact sidebar, or tabs
+  // Handle Android hardware / gesture back button inside mobile chat, contact sidebar, modal dialogs, or sub-pages
   useEffect(() => {
     window.__handleAndroidBack = () => {
-      if (sideBar_ref.current?.open) {
-        dispatch(CloseSidebar());
+      // 1. Any registered custom back handler (e.g., status stories viewer, photo editor)
+      if (Array.isArray(window.__backHandlers) && window.__backHandlers.length > 0) {
+        for (let i = window.__backHandlers.length - 1; i >= 0; i--) {
+          const handler = window.__backHandlers[i];
+          if (typeof handler === "function") {
+            try {
+              const handled = handler();
+              if (handled !== false) {
+                return "HANDLED";
+              }
+            } catch (e) {
+              console.error("Back handler error:", e);
+            }
+          }
+        }
+      }
+
+      // 2. Any open MUI Dialog / Modal / Menu / Popover -> close with Escape
+      const activeModal = document.querySelector(
+        '.MuiDialog-root:not([aria-hidden="true"]), .MuiModal-root:not([aria-hidden="true"]), .MuiMenu-root, .MuiPopover-root'
+      );
+      if (activeModal) {
+        const escapeEvent = new KeyboardEvent("keydown", {
+          key: "Escape",
+          code: "Escape",
+          keyCode: 27,
+          which: 27,
+          bubbles: true,
+          cancelable: true,
+        });
+        document.dispatchEvent(escapeEvent);
         return "HANDLED";
       }
+
+      // 3. Contact Sidebar: if in Shared/Starred, step back to Contact; else close sidebar
+      if (sideBar_ref.current?.open) {
+        if (sideBar_ref.current?.type === "SHARED" || sideBar_ref.current?.type === "STARRED") {
+          dispatch(UpdateSidebarType("CONTACT"));
+        } else {
+          dispatch(CloseSidebar());
+        }
+        return "HANDLED";
+      }
+
+      // 4. Active Chat Conversation -> step back to chats list
       if (room_id_ref.current !== null) {
         dispatch(SelectConversation({ room_id: null }));
         return "HANDLED";
       }
+
+      // 5. Current route navigation: Go back in history instead of blindly dumping user on /app
       const currentPath = (pathname_ref.current || "").toLowerCase();
-      if (currentPath && currentPath !== "/app" && currentPath !== "/") {
-        navigate("/app");
+      const isHome = currentPath === "/app" || currentPath === "/" || currentPath === "/index.html";
+      if (!isHome) {
+        if (window.history.length > 1) {
+          navigate(-1);
+        } else {
+          navigate("/app");
+        }
         return "HANDLED";
       }
+
+      // 6. At root home chats list with no subviews open -> allow graceful exit
       return "EXIT";
     };
 
@@ -136,6 +206,20 @@ const DashboardLayout = () => {
       }
     };
     window.addEventListener("open_notification_chat", handleOpenNotificationChat);
+
+    // Check if cold-started by tapping a message notification from tray / lock screen
+    if (typeof window !== "undefined" && window.AndroidNotificationBridge?.getPendingConversationId) {
+      try {
+        const pendingCid = window.AndroidNotificationBridge.getPendingConversationId();
+        if (pendingCid) {
+          window.AndroidNotificationBridge.clearPendingConversationId();
+          handleOpenNotificationChat({ detail: { conversation_id: pendingCid } });
+        }
+      } catch (err) {
+        console.warn("Pending conversation check warning:", err);
+      }
+    }
+
     return () => {
       window.removeEventListener("open_notification_chat", handleOpenNotificationChat);
     };
@@ -144,13 +228,13 @@ const DashboardLayout = () => {
   useEffect(() => {
     if (isDesktop) return undefined;
 
-    if (room_id !== null || sideBar?.open) {
-      window.history.pushState({ inMobileSubView: true }, "");
-    }
-
     const handlePopState = () => {
       if (sideBar_ref.current?.open) {
-        dispatch(CloseSidebar());
+        if (sideBar_ref.current?.type === "SHARED" || sideBar_ref.current?.type === "STARRED") {
+          dispatch(UpdateSidebarType("CONTACT"));
+        } else {
+          dispatch(CloseSidebar());
+        }
       } else if (room_id_ref.current !== null) {
         dispatch(SelectConversation({ room_id: null }));
       }
@@ -158,36 +242,88 @@ const DashboardLayout = () => {
 
     window.addEventListener("popstate", handlePopState);
     return () => window.removeEventListener("popstate", handlePopState);
-  }, [isDesktop, room_id, sideBar?.open, dispatch]);
+  }, [isDesktop, dispatch]);
 
   const current_conversation_ref = useRef(current_conversation);
   useEffect(() => {
     current_conversation_ref.current = current_conversation;
+    if (typeof window !== "undefined" && window.AndroidNotificationBridge?.setActiveConversation) {
+      window.AndroidNotificationBridge.setActiveConversation(
+        current_conversation?.id?.toString() || ""
+      );
+    }
   }, [current_conversation]);
 
-  const conversations_ref = useRef(conversations);
   useEffect(() => {
-    conversations_ref.current = conversations;
-  }, [conversations]);
-
-  // Request notification permissions
-  useEffect(() => {
-    if (typeof window !== "undefined" && "Notification" in window) {
-      if (Notification.permission === "default") {
-        Notification.requestPermission();
-      }
+    if (user_id && typeof window !== "undefined" && window.AndroidNotificationBridge?.setLoggedInUser) {
+      const authToken =
+        window.localStorage.getItem("token") ||
+        window.localStorage.getItem("accessToken") ||
+        "";
+      window.AndroidNotificationBridge.setLoggedInUser(user_id, authToken);
     }
-  }, []);
+  }, [user_id]);
 
-  // Always start on the main dashboard (Chat list) when opening the app or switching accounts
+  // Proactively validate and refresh token on app mount / dashboard view
   useEffect(() => {
-    dispatch(SelectConversation({ room_id: null }));
+    const currentToken =
+      typeof window !== "undefined"
+        ? window.localStorage.getItem("token") || window.localStorage.getItem("accessToken")
+        : null;
+
+    if (currentToken) {
+      axios
+        .post("/auth/refresh-token", { token: currentToken })
+        .then((res) => {
+          if (res.data?.token) {
+            const freshToken = res.data.token;
+            dispatch(updateToken({ token: freshToken }));
+            if (typeof window !== "undefined") {
+              window.localStorage.setItem("token", freshToken);
+              window.localStorage.setItem("accessToken", freshToken);
+              if (user_id && window.AndroidNotificationBridge?.setLoggedInUser) {
+                window.AndroidNotificationBridge.setLoggedInUser(user_id, freshToken);
+              }
+            }
+          }
+        })
+        .catch((err) => {
+          console.warn("Silent token refresh on mount:", err?.message || err);
+        });
+    }
   }, [dispatch, user_id]);
 
-  // Fetch user profile
+  const conversations_ref = useRef(conversations);
+  const notifiedMessageIdsRef = useRef(new Set());
+  useEffect(() => {
+    conversations_ref.current = conversations;
+    const totalUnread = (conversations || []).reduce(
+      (sum, c) => sum + (Number(c.unread) || 0),
+      0
+    );
+    updateAppBadge(totalUnread);
+  }, [conversations]);
+
+  // Request notification permissions (Native Android 13+ and Web) and unlock audio pipeline
+  useEffect(() => {
+    requestNotificationPermission();
+    unlockAudio();
+  }, []);
+
+  // Only reset active conversation if switching accounts (user_id changed)
+  const previousUserIdRef = useRef(user_id);
+  useEffect(() => {
+    if (previousUserIdRef.current && user_id && previousUserIdRef.current !== user_id) {
+      dispatch(SelectConversation({ room_id: null }));
+    }
+    previousUserIdRef.current = user_id;
+  }, [dispatch, user_id]);
+
+  // Fetch user profile & pending friend requests
   useEffect(() => {
     if (isLoggedIn) {
       dispatch(FetchUserProfile());
+      dispatch(FetchFriendRequests());
     }
   }, [dispatch, isLoggedIn]);
 
@@ -217,11 +353,57 @@ const DashboardLayout = () => {
     const handleDirectConversations = (data) => {
       if (Array.isArray(data)) {
         dispatch(FetchDirectConversations({ conversations: data }));
+
+        // Check if any conversation in MongoDB has an unread message that was not notified yet (Home screen & Lock screen backup)
+        if (typeof document !== "undefined" && document.hidden) {
+          data.forEach((conv) => {
+            const unreadCount = Number(conv.unread_count) || Number(conv.unread) || 0;
+            if (unreadCount > 0 && conv.last_message) {
+              const msgId = (conv.last_message._id || conv.last_message.id || "").toString();
+              const isOutgoing = (conv.last_message.from?._id || conv.last_message.from)?.toString() === user_id?.toString();
+              if (msgId && !isOutgoing && !notifiedMessageIdsRef.current.has(msgId)) {
+                notifiedMessageIdsRef.current.add(msgId);
+                const senderName = conv.name || "Trackon";
+                const contentPreview = conv.last_message.text || "New message received";
+                showOutsideNotification({
+                  title: senderName,
+                  body: contentPreview,
+                  icon: conv.img || "",
+                  conversation_id: conv._id || conv.id,
+                  unreadCount: Math.max(1, unreadCount),
+                  totalBadgeCount: Math.max(1, unreadCount),
+                  playSound: true,
+                });
+              }
+            }
+          });
+        }
+      }
+    };
+
+    // Periodic MongoDB sync every 12 seconds when app is in background or phone is locked
+    const bgMongoSyncInterval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden && socket && socket.connected && user_id) {
+        socket.emit("get_direct_conversations", { user_id });
+      }
+    }, 12000);
+
+    // Initialize push notifications on native mobile devices
+    initPushNotifications(user_id);
+
+    window.__openConversation = (convId) => {
+      if (convId) {
+        dispatch(SelectConversation({ room_id: convId }));
+        navigate("/app");
       }
     };
 
     const handleSocketConnect = () => {
       socket.emit("user_connected", { user_id });
+      const savedToken = window.localStorage.getItem("fcm_token");
+      if (savedToken) {
+        socket.emit("save_fcm_token", { user_id, fcm_token: savedToken });
+      }
     };
 
     if (!socket.connected) {
@@ -245,9 +427,20 @@ const DashboardLayout = () => {
       const outgoing = fromId === current_user_id?.toString();
       const incoming = !outgoing;
 
+      const msgUniqueId = (message._id || message.id || message.temp_id)?.toString();
+      if (msgUniqueId) {
+        notifiedMessageIdsRef.current.add(msgUniqueId);
+      }
+
       const isCurrentChat =
         current_conversation_ref.current?.id?.toString() === data.conversation_id?.toString() ||
         room_id_ref.current?.toString() === data.conversation_id?.toString();
+
+      // Only treat chat as actively viewed if the window is currently visible (not minimized/on home screen)
+      const isChatVisibleToUser =
+        typeof document !== "undefined" &&
+        !document.hidden &&
+        isCurrentChat;
 
       if (isCurrentChat) {
         dispatch(
@@ -274,7 +467,7 @@ const DashboardLayout = () => {
           }),
         );
 
-        if (incoming && typeof document !== "undefined" && !document.hidden) {
+        if (incoming && isChatVisibleToUser) {
           socket.emit("mark_messages_seen", {
             conversation_id: data.conversation_id,
             user_id: current_user_id,
@@ -287,7 +480,7 @@ const DashboardLayout = () => {
           conversation_id: data.conversation_id,
           message,
           sender: data.sender,
-          is_current: isCurrentChat,
+          is_current: isChatVisibleToUser,
         }),
       );
 
@@ -326,9 +519,15 @@ const DashboardLayout = () => {
         }
 
         const isMuted = isConversationMuted(data.conversation_id);
+        const convUnread = (Number(senderConv?.unread) || 0) + (isChatVisibleToUser ? 0 : 1);
+        const totalUnread =
+          (conversations_ref.current || []).reduce(
+            (sum, c) => sum + (Number(c.unread) || 0),
+            0
+          ) + (isChatVisibleToUser ? 0 : 1);
 
         if (!isMuted) {
-          // Play signature chime sound
+          // Play signature chime sound (native ringtone on Android, crystal chime on web)
           playNotificationChime();
 
           // Haptic vibration
@@ -341,7 +540,7 @@ const DashboardLayout = () => {
           }
 
           // 1. Show Top In-App Floating Popup Banner (when not currently in this chat, or window is hidden)
-          if (!isCurrentChat || document.hidden) {
+          if (!isChatVisibleToUser) {
             setInAppNotification({
               id: Date.now(),
               conversation_id: data.conversation_id,
@@ -351,19 +550,26 @@ const DashboardLayout = () => {
             });
           }
 
-          // 2. WhatsApp-style Outside / Desktop Notification
-          if (!isCurrentChat || document.hidden) {
+          // 2. WhatsApp-style Outside / Desktop Notification with Launcher Badge & visible unread count
+          if (!isChatVisibleToUser) {
             showOutsideNotification({
               title: senderName,
               body: contentPreview,
               icon: senderAvatar,
               conversation_id: data.conversation_id,
+              unreadCount: Math.max(1, convUnread),
+              totalBadgeCount: Math.max(1, totalUnread),
+              playSound: false, // Already chimed above
               onClick: () => {
                 dispatch(SelectConversation({ room_id: data.conversation_id }));
                 navigate("/app");
               },
             });
+          } else {
+            updateAppBadge(totalUnread);
           }
+        } else {
+          updateAppBadge(totalUnread);
         }
       }
     });
@@ -448,34 +654,325 @@ const DashboardLayout = () => {
       }
     });
 
+    // Call notification helpers for mobile heads-up banners & ringtones
+    const triggerIncomingCallAlert = (data, callType) => {
+      const fromUser = data?.from_user || {};
+      const callerName =
+        `${fromUser.firstName || ""} ${fromUser.lastName || ""}`.trim() ||
+        data?.userName ||
+        "Incoming Call";
+      const roomID = (data?.roomID || data?.call_id || "").toString();
+      const avatarUrl = fromUser.avatar || "";
+      const callerId = (fromUser._id || data?.streamID || "").toString();
+
+      // Native Android notification with heads-up banner, ringtone, and Answer/Decline buttons
+      if (typeof window !== "undefined" && window.AndroidNotificationBridge?.showIncomingCall) {
+        window.AndroidNotificationBridge.showIncomingCall(
+          callerName,
+          callType,
+          roomID,
+          avatarUrl,
+          callerId
+        );
+      } else {
+        // Fallback for web desktop notifications
+        showOutsideNotification({
+          title: `Incoming ${callType === "video" ? "Video" : "Audio"} Call`,
+          body: `${callerName} is calling you...`,
+          icon: avatarUrl,
+          playSound: true,
+        });
+      }
+    };
+
+    const dismissIncomingCallAlert = () => {
+      if (typeof window !== "undefined" && window.AndroidNotificationBridge?.dismissIncomingCall) {
+        window.AndroidNotificationBridge.dismissIncomingCall();
+      }
+    };
+
     // Incoming audio call notification
     socket.on("audio_call_notification", (data) => {
       console.log("AUDIO CALL NOTIFICATION RECEIVED:", data);
       dispatch(PushToAudioCallQueue(data));
+      triggerIncomingCallAlert(data, "audio");
     });
 
     // Incoming video call notification
     socket.on("video_call_notification", (data) => {
       console.log("VIDEO CALL NOTIFICATION RECEIVED:", data);
       dispatch(PushToVideoCallQueue(data));
+      triggerIncomingCallAlert(data, "video");
     });
 
-    // New friend request
-    socket.on("new_friend_request", () => {
+    // Dismiss incoming call notification when call is cancelled or missed
+    socket.on("audio_call_denied", dismissIncomingCallAlert);
+    socket.on("audio_call_missed", dismissIncomingCallAlert);
+    socket.on("video_call_denied", dismissIncomingCallAlert);
+    socket.on("video_call_missed", dismissIncomingCallAlert);
+    socket.on("webrtc_call_ended", dismissIncomingCallAlert);
+
+    // Handle Answer / Decline actions triggered directly from native Android notification bar
+    const handleNativeCallAction = (event) => {
+      const { action, roomId, callType, callerId, callerName } = event.detail || {};
+      console.log("Native call action received from Android:", action, roomId, callType);
+
+      dismissIncomingCallAlert();
+
+      const callData = {
+        roomID: roomId,
+        call_id: roomId,
+        streamID: callerId,
+        userID: user_id,
+        userName: callerName || "Caller",
+        from_user: { _id: callerId, firstName: callerName || "Trackon", avatar: "" },
+      };
+
+      if (action === "answer") {
+        if (callType === "video") {
+          dispatch(PushToVideoCallQueue(callData));
+          dispatch(UpdateVideoCallDialog({ state: true }));
+          socket?.emit("video_call_accepted", { roomID: roomId, call_id: roomId });
+        } else {
+          dispatch(PushToAudioCallQueue(callData));
+          dispatch(UpdateAudioCallDialog({ state: true }));
+          socket?.emit("audio_call_accepted", { roomID: roomId, call_id: roomId });
+        }
+      } else if (action === "decline") {
+        if (callType === "video") {
+          dispatch(ResetVideoCallQueue());
+          socket?.emit("video_call_denied", { roomID: roomId, call_id: roomId });
+        } else {
+          dispatch(ResetAudioCallQueue());
+          socket?.emit("audio_call_denied", { roomID: roomId, call_id: roomId });
+        }
+      } else if (action === "open") {
+        if (callType === "video") {
+          dispatch(PushToVideoCallQueue(callData));
+        } else {
+          dispatch(PushToAudioCallQueue(callData));
+        }
+      }
+    };
+    window.addEventListener("native_call_action", handleNativeCallAction);
+
+    // Bridge Logged-in User State to Android Native for Persistent Background Service
+    if (isLoggedIn && user_id) {
+      const token = window.localStorage.getItem("token") || "";
+      if (typeof window !== "undefined" && window.AndroidNotificationBridge?.setLoggedInUser) {
+        try {
+          window.AndroidNotificationBridge.setLoggedInUser(user_id, token, BASE_URL);
+        } catch (e) {
+          console.warn("Could not set logged in user on Android bridge:", e);
+        }
+      }
+    }
+
+    // Direct Reply Listener from Android System Notification Bar
+    const handleNativeDirectReply = (e) => {
+      const { conversation_id, text } = e.detail || {};
+      if (!conversation_id || !text) return;
+      const temp_id = "reply_" + Date.now() + "_" + Math.random().toString(36).substr(2, 6);
+      socket.emit("text_message", {
+        conversation_id,
+        message: text,
+        temp_id,
+      });
+      dispatch(
+        AddDirectMessage({
+          id: temp_id,
+          temp_id,
+          type: "msg",
+          subtype: "Text",
+          message: text,
+          incoming: false,
+          outgoing: true,
+          created_at: new Date().toISOString(),
+          conversation_id,
+        })
+      );
+      dispatch(
+        UpdateConversationOnNewMessage({
+          conversation_id,
+          message: text,
+          time: new Date().toISOString(),
+          unread: 0,
+          outgoing: true,
+        })
+      );
+      if (typeof window !== "undefined" && window.AndroidNotificationBridge?.clearConversationNotification) {
+        window.AndroidNotificationBridge.clearConversationNotification(conversation_id);
+      }
+    };
+    window.addEventListener("native_direct_reply", handleNativeDirectReply);
+
+    // Check cold-started pending direct reply
+    if (typeof window !== "undefined" && window.AndroidNotificationBridge?.getPendingDirectReply) {
+      try {
+        const pendingReplyStr = window.AndroidNotificationBridge.getPendingDirectReply();
+        if (pendingReplyStr) {
+          const pendingReply = JSON.parse(pendingReplyStr);
+          handleNativeDirectReply({ detail: pendingReply });
+        }
+      } catch (err) {
+        console.warn("Pending direct reply parse error:", err);
+      }
+    }
+
+
+    // Check if cold-started by tapping Answer / Call notification from outer screen / home screen
+    if (typeof window !== "undefined" && window.AndroidNotificationBridge?.getPendingCallAction) {
+      try {
+        const pendingStr = window.AndroidNotificationBridge.getPendingCallAction();
+        if (pendingStr) {
+          const pending = JSON.parse(pendingStr);
+          window.AndroidNotificationBridge.clearPendingCallAction();
+          handleNativeCallAction({ detail: pending });
+        }
+      } catch (err) {
+        console.warn("Pending call action check warning:", err);
+      }
+    }
+
+    // Automatically re-sync and re-connect when user returns to app from home screen or other apps
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        if (socket && !socket.connected) {
+          socket.connect();
+        }
+        if (socket && user_id) {
+          socket.emit("user_connected", { user_id });
+          socket.emit("get_direct_conversations", { user_id }, (conversations) => {
+            if (Array.isArray(conversations)) {
+              dispatch(FetchDirectConversations({ conversations }));
+            }
+          });
+        }
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    // New friend request received -> real-time notification + sound + refresh badge/list
+    socket.on("new_friend_request", (data) => {
+      const senderObj = data?.sender || {};
+      const senderName =
+        `${senderObj.firstName || ""} ${senderObj.lastName || ""}`.trim() ||
+        "Someone";
+      const senderAvatar = senderObj.avatar || "";
+      const bodyText =
+        data?.message || `${senderName} sent you a friend request`;
+
+      dispatch(FetchFriendRequests());
+      playNotificationChime();
+
+      const openRequestsTab = () => {
+        navigate("/app");
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("open_friend_requests_tab"));
+        }, 50);
+      };
+
+      setInAppNotification({
+        id: `fr_${data?.request_id || Date.now()}`,
+        senderName: "New Friend Request",
+        senderAvatar,
+        contentPreview: `👋 ${senderName} sent you a friend request — Tap to view`,
+        onClick: openRequestsTab,
+      });
+
+      showOutsideNotification({
+        title: "New Friend Request",
+        body: `👋 ${bodyText}`,
+        icon: senderAvatar,
+        playSound: false, // Already played chime above
+        onClick: openRequestsTab,
+      });
+
       dispatch(
         showSnackbar({
-          severity: "success",
-          message: "New friend request received",
+          severity: "info",
+          message: `👋 ${bodyText}`,
         }),
       );
     });
 
-    // Friend request accepted
-    socket.on("request_accepted", () => {
+    // Friend request accepted -> immediately add both users to each other's chat list + notify
+    socket.on("request_accepted", (data) => {
+      const current_user_id = (
+        user_id || window.localStorage.getItem("user_id") || ""
+      ).toString();
+
+      if (data?.conversation) {
+        const convId = (
+          data.conversation._id || data.conversation.id
+        )?.toString();
+        const existing_conversation = (conversations_ref.current || []).find(
+          (el) => el?.id?.toString() === convId,
+        );
+
+        if (existing_conversation) {
+          dispatch(
+            UpdateDirectConversation({
+              conversation: data.conversation,
+            }),
+          );
+        } else {
+          dispatch(
+            AddDirectConversation({
+              conversation: data.conversation,
+              setCurrent: false,
+            }),
+          );
+        }
+      }
+
+      dispatch(FetchFriends());
+      dispatch(FetchFriendRequests());
+      dispatch(FetchUsers());
+      dispatch(FetchDirectConversationsFromServer());
+
+      const acceptedById = (
+        data?.accepted_by?._id || data?.accepted_by || ""
+      ).toString();
+      const accepterName = data?.accepted_by
+        ? `${data.accepted_by.firstName || ""} ${data.accepted_by.lastName || ""}`.trim() ||
+          "Your friend"
+        : "Your friend";
+      const accepterAvatar = data?.accepted_by?.avatar || "";
+      const convId = (
+        data?.conversation?._id || data?.conversation?.id || ""
+      ).toString();
+
+      if (acceptedById && acceptedById !== current_user_id) {
+        playNotificationChime();
+        setInAppNotification({
+          id: `fa_${data?.request_id || Date.now()}`,
+          senderName: accepterName,
+          senderAvatar: accepterAvatar,
+          contentPreview: "✅ Accepted your friend request! Tap to start chatting",
+          conversation_id: convId || undefined,
+        });
+        showOutsideNotification({
+          title: "Friend Request Accepted",
+          body: `✅ ${accepterName} accepted your friend request! Start chatting now.`,
+          icon: accepterAvatar,
+          conversation_id: convId || undefined,
+          playSound: false,
+          onClick: () => {
+            if (convId) {
+              dispatch(SelectConversation({ room_id: convId }));
+            }
+            navigate("/app");
+          },
+        });
+      }
+
       dispatch(
         showSnackbar({
           severity: "success",
-          message: "Friend Request Accepted",
+          message:
+            data?.message ||
+            "Friend request accepted! Added to your chat list.",
         }),
       );
     });
@@ -547,13 +1044,22 @@ const DashboardLayout = () => {
       socket?.off("message_starred");
       socket?.off("audio_call_notification");
       socket?.off("video_call_notification");
+      socket?.off("audio_call_denied", dismissIncomingCallAlert);
+      socket?.off("audio_call_missed", dismissIncomingCallAlert);
+      socket?.off("video_call_denied", dismissIncomingCallAlert);
+      socket?.off("video_call_missed", dismissIncomingCallAlert);
+      socket?.off("webrtc_call_ended", dismissIncomingCallAlert);
+      window.removeEventListener("native_call_action", handleNativeCallAction);
+      window.removeEventListener("native_direct_reply", handleNativeDirectReply);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      clearInterval(bgMongoSyncInterval);
       socket?.off("new_status");
       socket?.off("status_deleted");
       socket?.off("status_viewed");
       socket?.off("messages_seen");
       socket?.off("messages_delivered");
     };
-  }, [isLoggedIn, user_id, dispatch]);
+  }, [isLoggedIn, user_id, dispatch, navigate]);
 
   const handleRefreshApp = React.useCallback(async () => {
     try {
@@ -681,3 +1187,4 @@ const DashboardLayout = () => {
 };
 
 export default DashboardLayout;
+

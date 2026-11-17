@@ -1,5 +1,16 @@
 import React, { useEffect } from "react";
-import { Button, Dialog, DialogActions, DialogContent, Divider, Slide, Stack, Tab, Tabs } from "@mui/material";
+import {
+  Badge,
+  Button,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  Divider,
+  Stack,
+  Tab,
+  Tabs,
+  Typography,
+} from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import {
   FetchFriendRequests,
@@ -7,15 +18,10 @@ import {
   FetchUsers,
 } from "../../redux/slices/app";
 import {
-  FriendElement,
   FriendRequestElement,
   UserElement,
 } from "../../components/UserElement";
 import { FriendComponent } from "../../components/Friends";
-
-const Transition = React.forwardRef(function Transition(props, ref) {
-  return <Slide direction="up" ref={ref} {...props} />;
-});
 
 const UsersList = () => {
   const dispatch = useDispatch();
@@ -24,12 +30,12 @@ const UsersList = () => {
 
   useEffect(() => {
     dispatch(FetchUsers());
-  }, []);
+  }, [dispatch]);
 
   return (
     <>
       {users.map((el, idx) => {
-        return <UserElement key={idx} {...el} />;
+        return <UserElement key={el._id || idx} {...el} />;
       })}
     </>
   );
@@ -39,12 +45,6 @@ const FriendsList = ({ handleClose }) => {
   const dispatch = useDispatch();
 
   const friends = useSelector((state) => state.app.friends);
-
-  console.log("========== FRIENDS DEBUG ==========");
-  console.log("friends:", friends);
-  console.log("typeof:", typeof friends);
-  console.log("isArray:", Array.isArray(friends));
-  console.log("===================================");
 
   useEffect(() => {
     dispatch(FetchFriends());
@@ -67,27 +67,42 @@ const FriendsList = ({ handleClose }) => {
   );
 };
 
-
 const FriendRequestsList = () => {
   const dispatch = useDispatch();
 
-  const { friendRequests } = useSelector((state) => state.app);
+  const { friendRequests = [] } = useSelector((state) => state.app);
 
   useEffect(() => {
     dispatch(FetchFriendRequests());
-  }, []);
+  }, [dispatch]);
+
+  if (!Array.isArray(friendRequests) || friendRequests.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary" align="center" sx={{ py: 3 }}>
+        No pending friend requests
+      </Typography>
+    );
+  }
 
   return (
     <>
       {friendRequests.map((el, idx) => {
-        return <FriendRequestElement key={idx} {...el.sender} id={el._id} />;
+        return <FriendRequestElement key={el._id || idx} {...el.sender} id={el._id} />;
       })}
     </>
   );
 };
 
-const Friends = ({ open, handleClose }) => {
-  const [value, setValue] = React.useState(0);
+const Friends = ({ open, handleClose, initialTab = 0 }) => {
+  const [value, setValue] = React.useState(initialTab);
+  const { friendRequests = [] } = useSelector((state) => state.app);
+  const pendingCount = Array.isArray(friendRequests) ? friendRequests.length : 0;
+
+  useEffect(() => {
+    if (open) {
+      setValue(initialTab);
+    }
+  }, [open, initialTab]);
 
   const handleChange = (event, newValue) => {
     setValue(newValue);
@@ -101,7 +116,6 @@ const Friends = ({ open, handleClose }) => {
       onClose={handleClose}
       sx={{ "& .MuiDialog-paper": { m: { xs: 1.5, sm: 3 }, width: "100%", maxWidth: "450px" } }}
     >
-      {/* <DialogTitle>{"Friends"}</DialogTitle> */}
       <Stack px={2} pt={2} pb={1} sx={{ width: "100%" }}>
         <Tabs
           value={value}
@@ -123,7 +137,18 @@ const Friends = ({ open, handleClose }) => {
         >
           <Tab label="Explore" />
           <Tab label="Friends" />
-          <Tab label="Requests" />
+          <Tab
+            label={
+              <Badge
+                badgeContent={pendingCount}
+                color="error"
+                max={99}
+                sx={{ "& .MuiBadge-badge": { right: -12, top: 2 } }}
+              >
+                <span>Requests</span>
+              </Badge>
+            }
+          />
         </Tabs>
       </Stack>
       <Divider />
@@ -132,13 +157,13 @@ const Friends = ({ open, handleClose }) => {
           <Stack spacing={2.5}>
             {(() => {
               switch (value) {
-                case 0: // display all users in this list
+                case 0:
                   return <UsersList />;
 
-                case 1: // display friends in this list
+                case 1:
                   return <FriendsList handleClose={handleClose} />;
 
-                case 2: // display request in this list
+                case 2:
                   return <FriendRequestsList />;
 
                 default:
@@ -163,7 +188,7 @@ const Friends = ({ open, handleClose }) => {
             fontSize: "0.85rem",
           }}
         >
-          Cancel
+          Close
         </Button>
       </DialogActions>
     </Dialog>

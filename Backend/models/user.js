@@ -110,6 +110,10 @@ const userSchema = new mongoose.Schema({
     type: String,
     enum: ["Online", "Offline"],
     default: "Offline",
+  },
+  fcm_token: {
+    type: String,
+    default: "",
   }
 });
 
