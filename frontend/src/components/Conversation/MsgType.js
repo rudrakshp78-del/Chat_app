@@ -8,6 +8,7 @@ import {
   MenuItem,
   Stack,
   Typography,
+  CircularProgress,
 } from "@mui/material";
 import { useTheme, alpha } from "@mui/material/styles";
 import { useDispatch, useSelector } from "react-redux";
@@ -18,6 +19,7 @@ import {
   Checks,
   DotsThreeVertical,
   DownloadSimple,
+  ShareNetwork,
   FileText,
   Microphone,
   MusicNotes,
@@ -34,6 +36,7 @@ import { fMessageTime } from "../../utils/formatTime";
 import { playSongPreview, stopAllSongPreviews } from "../../utils/storyMusicPlayer";
 import { socket } from "../../socket";
 import { showSnackbar } from "../../redux/slices/app";
+import FullScreenImageViewer from "../FullScreenImageViewer";
 import {
   SetReplyingTo,
   StarDirectMessage,
@@ -771,6 +774,47 @@ const TextMsg = ({ el }) => {
 const MediaMsg = ({ el }) => {
   const theme = useTheme();
   const [isPlaying, setIsPlaying] = React.useState(false);
+  const [openViewer, setOpenViewer] = React.useState(false);
+  const { current_messages } = useSelector((state) => state.conversation.direct_chat);
+
+  const allMediaImages = React.useMemo(() => {
+    if (!Array.isArray(current_messages)) return [];
+    return current_messages
+      .filter((m) => {
+        if (m.deleted) return false;
+        const sub = String(m.subtype || "").toLowerCase();
+        const type = String(m.type || "").toLowerCase();
+        const isImageType =
+          sub === "media" || sub === "img" || sub === "image" || type === "media";
+        return isImageType && Boolean(m.file || m.img);
+      })
+      .map((m) => {
+        const mediaSrc = m.file || m.img;
+        const formattedTime = fMessageTime(m.created_at || m.time);
+        const senderLabel = m.incoming ? "Received" : "You";
+        return {
+          id: m.id,
+          src: mediaSrc,
+          url: mediaSrc,
+          title: m.fileName || m.message || "Shared photo",
+          subtitle: formattedTime ? `${senderLabel} • ${formattedTime}` : senderLabel,
+          timestamp: m.created_at || m.time,
+          sender: senderLabel,
+        };
+      });
+  }, [current_messages]);
+
+  const initialIndex = React.useMemo(() => {
+    if (el?.id) {
+      const byId = allMediaImages.findIndex((img) => img.id === el.id);
+      if (byId >= 0) return byId;
+    }
+    const targetUrl = el?.img || el?.file;
+    const idx = allMediaImages.findIndex(
+      (img) => img.src === targetUrl || img.url === targetUrl
+    );
+    return idx >= 0 ? idx : 0;
+  }, [allMediaImages, el]);
 
   React.useEffect(() => {
     return () => {
@@ -795,101 +839,140 @@ const MediaMsg = ({ el }) => {
   };
 
   return (
-    <MessageBubble el={el}>
-      <Stack spacing={1}>
-        <Box
-          component="img"
-          src={el.img || el.file}
-          alt={el.message || "Shared photo"}
-          sx={{
-            display: "block",
-            width: "100%",
-            maxWidth: 290,
-            height: "auto",
-            maxHeight: 320,
-            objectFit: "contain",
-            borderRadius: 1.5,
-            bgcolor: "rgba(0,0,0,0.06)",
-          }}
-        />
-
-        {/* Instagram Story Song Player Bar on Shared Photo */}
-        {el?.song?.title && (
-          <Stack
-            direction="row"
-            alignItems="center"
-            spacing={1}
-            onClick={handleToggleSong}
-            sx={{
-              px: 1.25,
-              py: 0.7,
-              borderRadius: 99,
-              bgcolor: "rgba(18, 18, 24, 0.85)",
-              color: "#fff",
-              cursor: "pointer",
-              transition: "transform 0.15s ease",
-              "&:hover": { transform: "scale(1.02)" },
+    <>
+      <MessageBubble el={el}>
+        <Stack spacing={1}>
+          <Box
+            component="img"
+            src={el.img || el.file}
+            alt={el.message || "Shared photo"}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenViewer(true);
             }}
-          >
-            <Box
+            sx={{
+              display: "block",
+              width: "100%",
+              maxWidth: 290,
+              height: "auto",
+              maxHeight: 320,
+              objectFit: "contain",
+              borderRadius: 1.5,
+              bgcolor: "rgba(0,0,0,0.06)",
+              cursor: "pointer",
+              transition: "transform 0.15s ease, filter 0.15s ease",
+              "&:hover": {
+                filter: "brightness(0.95)",
+                transform: "scale(1.008)",
+              },
+            }}
+          />
+
+          {/* Instagram Story Song Player Bar on Shared Photo */}
+          {el?.song?.title && (
+            <Stack
+              direction="row"
+              alignItems="center"
+              spacing={1}
+              onClick={handleToggleSong}
               sx={{
-                width: 26,
-                height: 26,
-                borderRadius: "50%",
-                bgcolor: isPlaying ? "#00E676" : "#FF4081",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                flexShrink: 0,
+                px: 1.25,
+                py: 0.7,
+                borderRadius: 99,
+                bgcolor: "rgba(18, 18, 24, 0.85)",
+                color: "#fff",
+                cursor: "pointer",
+                transition: "transform 0.15s ease",
+                "&:hover": { transform: "scale(1.02)" },
               }}
             >
-              {isPlaying ? (
-                <Pause size={13} weight="fill" color="#fff" />
-              ) : (
-                <Play size={13} weight="fill" color="#fff" />
-              )}
-            </Box>
-            <Box sx={{ minWidth: 0, flex: 1 }}>
-              <Typography
-                variant="caption"
-                noWrap
-                sx={{ display: "block", fontWeight: 700, color: "#fff", lineHeight: 1.15 }}
+              <Box
+                sx={{
+                  width: 26,
+                  height: 26,
+                  borderRadius: "50%",
+                  bgcolor: isPlaying ? "#00E676" : "#FF4081",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                }}
               >
-                🎵 {el.song.title}
-              </Typography>
-              {el.song.artist && (
+                {isPlaying ? (
+                  <Pause size={13} weight="fill" color="#fff" />
+                ) : (
+                  <Play size={13} weight="fill" color="#fff" />
+                )}
+              </Box>
+              <Box sx={{ minWidth: 0, flex: 1 }}>
                 <Typography
                   variant="caption"
                   noWrap
-                  sx={{
-                    display: "block",
-                    fontSize: "0.66rem",
-                    color: "rgba(255,255,255,0.75)",
-                    lineHeight: 1.1,
-                  }}
+                  sx={{ display: "block", fontWeight: 700, color: "#fff", lineHeight: 1.15 }}
                 >
-                  {el.song.artist}
+                  🎵 {el.song.title}
                 </Typography>
-              )}
-            </Box>
-            <MusicNotes size={16} color="#00E676" weight="bold" />
-          </Stack>
-        )}
+                {el.song.artist && (
+                  <Typography
+                    variant="caption"
+                    noWrap
+                    sx={{
+                      display: "block",
+                      fontSize: "0.66rem",
+                      color: "rgba(255,255,255,0.75)",
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    {el.song.artist}
+                  </Typography>
+                )}
+              </Box>
+              <MusicNotes size={16} color="#00E676" weight="bold" />
+            </Stack>
+          )}
 
-        {el.message && (
-          <Typography
-            variant="body2"
-            sx={{
-              color: el.incoming ? theme.palette.text.primary : "#fff",
-              wordBreak: "break-word",
-              overflowWrap: "anywhere",
-            }}
-          >
-            {el.message}
-          </Typography>
-        )}
-      </Stack>
-    </MessageBubble>
+          {el.message && (
+            <Typography
+              variant="body2"
+              sx={{
+                color: el.incoming ? theme.palette.text.primary : "#fff",
+                wordBreak: "break-word",
+                overflowWrap: "anywhere",
+              }}
+            >
+              {el.message}
+            </Typography>
+          )}
+        </Stack>
+      </MessageBubble>
+
+      {openViewer && (
+        <FullScreenImageViewer
+          open={openViewer}
+          onClose={() => setOpenViewer(false)}
+          src={el.img || el.file}
+          images={
+            allMediaImages.length > 0
+              ? allMediaImages
+              : [
+                  {
+                    src: el.img || el.file,
+                    url: el.img || el.file,
+                    title: el.fileName || el.message || "Shared photo",
+                    subtitle: `${el.incoming ? "Received" : "You"}${
+                      fMessageTime(el.created_at || el.time)
+                        ? ` • ${fMessageTime(el.created_at || el.time)}`
+                        : ""
+                    }`,
+                    timestamp: el.created_at || el.time,
+                    sender: el.incoming ? "Received" : "You",
+                  },
+                ]
+          }
+          initialIndex={initialIndex}
+        />
+      )}
+    </>
   );
 };
 
@@ -988,8 +1071,167 @@ const LinkMsg = ({ el }) => {
    DOCUMENT MESSAGE
 ========================= */
 
+
+const isVideoFile = (name = "", url = "") => {
+  const checkStr = ((name || "") + " " + (url || "")).toLowerCase();
+  return (
+    checkStr.endsWith(".mp4") ||
+    checkStr.endsWith(".webm") ||
+    checkStr.endsWith(".mov") ||
+    checkStr.endsWith(".mkv") ||
+    checkStr.includes(".mp4?") ||
+    checkStr.includes(".webm?") ||
+    checkStr.includes("data:video/") ||
+    checkStr.includes("video/")
+  );
+};
+
+
+const VideoMsg = ({ el }) => {
+  const theme = useTheme();
+  const videoRef = React.useRef(null);
+  const [, setIsPlaying] = React.useState(false);
+  const [isBuffering, setIsBuffering] = React.useState(false);
+
+  if (el?.deleted) {
+    return <DeletedMsg el={el} />;
+  }
+
+  const videoSrc = el.file || el.url || el.img;
+  const fileName = el.fileName || el.message || "Shared video";
+
+  const handleShare = async (e) => {
+    e.stopPropagation();
+    if (typeof navigator !== "undefined" && navigator.share) {
+      try {
+        await navigator.share({
+          title: fileName,
+          url: videoSrc,
+        });
+      } catch (err) {
+        console.warn("Share error:", err);
+      }
+    } else if (typeof navigator !== "undefined" && navigator.clipboard) {
+      navigator.clipboard.writeText(videoSrc);
+    }
+  };
+
+  return (
+    <MessageBubble el={el}>
+      <Stack spacing={1} sx={{ maxWidth: 300, width: "100%" }}>
+        <Box
+          sx={{
+            position: "relative",
+            width: "100%",
+            borderRadius: 1.5,
+            overflow: "hidden",
+            bgcolor: "#000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <Box
+            component="video"
+            ref={videoRef}
+            src={videoSrc}
+            controls
+            playsInline
+            preload="metadata"
+            onPlay={() => setIsPlaying(true)}
+            onPause={() => setIsPlaying(false)}
+            onWaiting={() => setIsBuffering(true)}
+            onPlaying={() => setIsBuffering(false)}
+            sx={{
+              display: "block",
+              width: "100%",
+              maxHeight: 320,
+              borderRadius: 1.5,
+              objectFit: "contain",
+            }}
+          />
+          {isBuffering && (
+            <CircularProgress
+              size={36}
+              sx={{
+                position: "absolute",
+                color: "#fff",
+                pointerEvents: "none",
+              }}
+            />
+          )}
+        </Box>
+
+        <Stack
+          direction="row"
+          alignItems="center"
+          justifyContent="space-between"
+          sx={{ px: 0.5 }}
+        >
+          <Typography
+            variant="caption"
+            noWrap
+            sx={{
+              fontWeight: 600,
+              color: el.incoming ? theme.palette.text.secondary : "rgba(255,255,255,0.85)",
+              maxWidth: 180,
+            }}
+          >
+            📹 {fileName}
+          </Typography>
+
+          <Stack direction="row" spacing={0.5}>
+            {typeof navigator !== "undefined" && navigator.share && (
+              <IconButton
+                size="small"
+                onClick={handleShare}
+                sx={{
+                  color: el.incoming ? theme.palette.text.secondary : "#fff",
+                  p: 0.5,
+                }}
+              >
+                <ShareNetwork size={16} />
+              </IconButton>
+            )}
+            <IconButton
+              component="a"
+              href={videoSrc}
+              download={fileName}
+              target="_blank"
+              rel="noopener noreferrer"
+              size="small"
+              onClick={(e) => e.stopPropagation()}
+              sx={{
+                color: el.incoming ? theme.palette.text.secondary : "#fff",
+                p: 0.5,
+              }}
+            >
+              <DownloadSimple size={16} />
+            </IconButton>
+          </Stack>
+        </Stack>
+
+        {el.message && el.message !== fileName && (
+          <Typography
+            variant="body2"
+            sx={{
+              color: el.incoming ? theme.palette.text.primary : "#fff",
+              wordBreak: "break-word",
+            }}
+          >
+            {el.message}
+          </Typography>
+        )}
+      </Stack>
+    </MessageBubble>
+  );
+};
+
 const DocMsg = ({ el }) => {
   const theme = useTheme();
+  if (isVideoFile(el?.fileName, el?.file)) {
+    return <VideoMsg el={el} />;
+  }
 
   if (el?.deleted) {
     return <DeletedMsg el={el} />;
@@ -1408,5 +1650,6 @@ export {
   ReplyMsg,
   LinkMsg,
   DocMsg,
+  VideoMsg,
   VoiceMsg,
 };
