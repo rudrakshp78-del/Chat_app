@@ -71,9 +71,26 @@ const ProfileForm = () => {
     about: Yup.string().required("About is required"),
   });
 
+  const DEFAULT_ABOUT = "Hello everyone! Just chill on Track-Chat";
+  const normalizeAbout = (val) => {
+    const trimmed = (val || "").trim();
+    if (
+      !trimmed ||
+      [
+        "hey there! i am using whatsapp.",
+        "hey there! i am using tawk.",
+        "hey there! i am using trackon.",
+        "hello everyone!,i am using trackon.",
+      ].includes(trimmed.toLowerCase())
+    ) {
+      return DEFAULT_ABOUT;
+    }
+    return trimmed;
+  };
+
   const defaultValues = {
     firstName: user?.firstName || "",
-    about: user?.about || "hello everyone!,I am using Trackon.",
+    about: normalizeAbout(user?.about),
   };
 
   const methods = useForm({
@@ -95,7 +112,7 @@ const ProfileForm = () => {
     if (user && Object.keys(user).length > 0) {
       reset({
         firstName: user?.firstName || "",
-        about: user?.about || "Hey there! I am using WhatsApp.",
+        about: normalizeAbout(user?.about),
       });
       if (user.avatar !== undefined) {
         setAvatar(user.avatar || "");

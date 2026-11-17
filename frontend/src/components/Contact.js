@@ -489,7 +489,12 @@ const Contact = () => {
             </Typography>
 
             <Typography variant="body2" color="text.secondary">
-              {current_conversation?.about || "Hey there! I am using Trackon."}
+              {current_conversation?.about &&
+              !/^hey there! i am using (whatsapp|tawk|trackon)\.?$/i.test(
+                current_conversation.about.trim()
+              )
+                ? current_conversation.about
+                : "Hello everyone! Just chill on Track-Chat"}
             </Typography>
           </Stack>
 

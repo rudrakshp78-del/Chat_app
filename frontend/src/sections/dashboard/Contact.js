@@ -304,7 +304,12 @@ const Contact = () => {
               About
             </Typography>
             <Typography variant="body2" fontWeight={500}>
-              {current_conversation?.about || "Hey there! I am using WhatsApp."}
+              {current_conversation?.about &&
+              !/^hey there! i am using (whatsapp|tawk|trackon)\.?$/i.test(
+                current_conversation.about.trim()
+              )
+                ? current_conversation.about
+                : "Hello everyone! Just chill on Track-Chat"}
             </Typography>
           </Stack>
           <Divider />

@@ -70,7 +70,13 @@ const RequestAccountDialog = ({ open, handleClose }) => {
         name:
           `${user?.firstName || ""} ${user?.lastName || ""}`.trim() || "User",
         email: user?.email || "Not specified",
-        about: user?.about || "Hey there! I am using Trackon.",
+        about:
+          user?.about &&
+          !/^hey there! i am using (whatsapp|tawk|trackon)\.?$/i.test(
+            user.about.trim()
+          )
+            ? user.about
+            : "Hello everyone! Just chill on Track-Chat",
         status: user?.status || "Online",
         avatar: user?.avatar ? "Custom DP Configured" : "Default Avatar",
         links: user?.links || [],

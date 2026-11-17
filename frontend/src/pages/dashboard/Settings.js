@@ -150,7 +150,7 @@ const Settings = () => {
           >
             {/* Header */}
             <Stack direction={"row"} alignItems="center" spacing={2}>
-              <IconButton onClick={() => navigate("/app")}>
+              <IconButton onClick={() => (window.history.length > 1 ? navigate(-1) : navigate("/app"))}>
                 <CaretLeft size={24} color={"#4B4B4B"} />
               </IconButton>
               <Typography variant="h5" fontWeight={700}>
@@ -190,7 +190,9 @@ const Settings = () => {
                     {fullName}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" noWrap>
-                    {user?.about || "Hey there! I am using Tawk."}
+                    {user?.about && !/^hey there! i am using (whatsapp|tawk|trackon)\.?$/i.test(user.about.trim())
+                      ? user.about
+                      : "Hello everyone! Just chill on Track-Chat"}
                   </Typography>
                   <Typography
                     variant="caption"
