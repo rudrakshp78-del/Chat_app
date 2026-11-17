@@ -9,6 +9,7 @@ const {
   login,
   socialLogin,
   protect,
+  refreshToken,
   forgotPassword,
   resetPassword,
 } = require("../controllers/auth");
@@ -20,6 +21,7 @@ router.post("/verify-otp", verifyOTP);
 router.post("/verify", verifyOTP);
 router.post("/login", login);
 router.post("/social-login", socialLogin);
+router.post("/refresh-token", refreshToken);
 
 
 router.post("/forgot-password", forgotPassword);

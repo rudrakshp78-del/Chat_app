@@ -40,6 +40,14 @@ const slice = createSlice({
         }
         if (action.payload.user_id) {
           window.localStorage.setItem("user_id", action.payload.user_id);
+          try {
+            if (window.AndroidNotificationBridge?.setLoggedInUser) {
+              window.AndroidNotificationBridge.setLoggedInUser(
+                action.payload.user_id,
+                action.payload.token || ""
+              );
+            }
+          } catch (e) {}
         }
       }
     },
@@ -50,15 +58,38 @@ const slice = createSlice({
 
       if (typeof window !== "undefined") {
         window.localStorage.removeItem("token");
-      window.localStorage.removeItem("accessToken");
+        window.localStorage.removeItem("accessToken");
         window.localStorage.removeItem("user_id");
+        try {
+          if (window.AndroidNotificationBridge?.clearLoggedInUser) {
+            window.AndroidNotificationBridge.clearLoggedInUser();
+          }
+        } catch (e) {}
       }
     },
     updateRegisterEmail(state, action) {
       state.email = action.payload.email;
     },
+    updateToken(state, action) {
+      const newToken = action.payload.token;
+      state.token = newToken;
+      if (typeof window !== "undefined" && newToken) {
+        window.localStorage.setItem("token", newToken);
+        window.localStorage.setItem("accessToken", newToken);
+        try {
+          if (window.AndroidNotificationBridge?.setLoggedInUser && state.user_id) {
+            window.AndroidNotificationBridge.setLoggedInUser(
+              state.user_id,
+              newToken
+            );
+          }
+        } catch (e) {}
+      }
+    },
   },
 });
+
+export const { updateToken } = slice.actions;
 
 // Reducer
 export default slice.reducer;
@@ -67,8 +98,8 @@ export function NewPassword(formValues) {
   return async (dispatch, getState) => {
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
-    await axios
-      .post(
+    try {
+      const response = await axios.post(
         "/auth/reset-password",
         {
           ...formValues,
@@ -77,40 +108,61 @@ export function NewPassword(formValues) {
           headers: {
             "Content-Type": "application/json",
           },
-        },
-      )
-      .then(function (response) {
-        console.log(response);
-        dispatch(
-          slice.actions.logIn({
-            isLoggedIn: true,
-            token: response.data.token,
-          }),
-        );
-        dispatch(
-          showSnackbar({ severity: "success", message: response.data.message }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        console.log("VERIFY OTP ERROR:", error.response?.data);
+        }
+      );
 
-        dispatch(
-          showSnackbar({
-            severity: "error",
-            message: error.response?.data?.message || "OTP verification failed",
-          }),
-        );
+      console.log("NewPassword response:", response);
+      const token = response.data?.token;
+      const user_id = response.data?.user_id;
 
-        dispatch(
-          slice.actions.updateIsLoading({
-            error: true,
-            isLoading: false,
-          }),
-        );
-      });
+      dispatch(
+        slice.actions.logIn({
+          isLoggedIn: true,
+          token,
+          user_id,
+        })
+      );
+
+      try {
+        if (user_id) {
+          connectSocket(user_id);
+        }
+      } catch (err) {
+        console.error("Socket connect error after password reset:", err);
+      }
+      dispatch(
+        showSnackbar({
+          severity: "success",
+          message: response.data?.message || "Password reset successfully!",
+        })
+      );
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false })
+      );
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error("RESET PASSWORD ERROR:", error);
+      const errorMessage =
+        (typeof error === "object" && error !== null
+          ? error.message || error.error
+          : null) ||
+        (typeof error === "string" ? error : null) ||
+        "Password reset failed. The link may be invalid or expired.";
+
+      dispatch(
+        showSnackbar({
+          severity: "error",
+          message: errorMessage,
+        })
+      );
+      dispatch(
+        slice.actions.updateIsLoading({
+          error: true,
+          isLoading: false,
+        })
+      );
+      return { success: false, error: errorMessage };
+    }
   };
 }
 
@@ -118,35 +170,50 @@ export function ForgotPassword(formValues) {
   return async (dispatch, getState) => {
     dispatch(slice.actions.updateIsLoading({ isLoading: true, error: false }));
 
-    await axios
-      .post(
+    try {
+      const cleanEmail = (formValues?.email || "").trim().toLowerCase();
+      const response = await axios.post(
         "/auth/forgot-password",
         {
           ...formValues,
+          email: cleanEmail,
         },
         {
           headers: {
             "Content-Type": "application/json",
           },
-        },
-      )
-      .then(function (response) {
-        console.log(response);
+        }
+      );
 
-        dispatch(
-          showSnackbar({ severity: "success", message: response.data.message }),
-        );
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: false }),
-        );
-      })
-      .catch(function (error) {
-        console.log(error);
-        dispatch(showSnackbar({ severity: "error", message: error.message }));
-        dispatch(
-          slice.actions.updateIsLoading({ isLoading: false, error: true }),
-        );
-      });
+      console.log("ForgotPassword response:", response);
+
+      const successMessage =
+        response.data?.message || "Password reset link sent to your email!";
+
+      dispatch(
+        showSnackbar({ severity: "success", message: successMessage })
+      );
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: false })
+      );
+
+      return { success: true, data: response.data };
+    } catch (error) {
+      console.error("ForgotPassword error:", error);
+      const errorMessage =
+        (typeof error === "object" && error !== null
+          ? error.response?.data?.message || error.message || error.error
+          : null) ||
+        (typeof error === "string" ? error : null) ||
+        "Failed to send reset link. Please try again.";
+
+      dispatch(showSnackbar({ severity: "error", message: errorMessage }));
+      dispatch(
+        slice.actions.updateIsLoading({ isLoading: false, error: true })
+      );
+
+      return { success: false, error: errorMessage };
+    }
   };
 }
 

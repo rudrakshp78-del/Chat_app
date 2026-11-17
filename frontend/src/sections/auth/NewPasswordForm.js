@@ -5,27 +5,30 @@ import { useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 // @mui
 import {
+  Alert,
   Box,
   Stack,
   IconButton,
   InputAdornment,
-  Button,
   Typography,
   LinearProgress,
 } from '@mui/material';
+import { LoadingButton } from '@mui/lab';
 // components
 import FormProvider, { RHFTextField } from '../../components/hook-form';
 import { Check, Eye, EyeSlash, X } from 'phosphor-react';
 import { useSearchParams } from 'react-router-dom';
-import { useDispatch } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { NewPassword } from '../../redux/slices/auth';
 
 // ----------------------------------------------------------------------
 
 export default function NewPasswordForm() {
   const dispatch = useDispatch();
+  const { isLoading } = useSelector((state) => state.auth);
   const [queryParameters] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
+  const token = queryParameters.get('token');
 
   const VerifyCodeSchema = Yup.object().shape({
     password: Yup.string()
@@ -53,7 +56,13 @@ export default function NewPasswordForm() {
     defaultValues,
   });
 
-  const { handleSubmit, watch } = methods;
+  const {
+    handleSubmit,
+    watch,
+    setError,
+    clearErrors,
+    formState: { errors },
+  } = methods;
 
   const passwordValue = watch('password') || '';
 
@@ -69,17 +78,38 @@ export default function NewPasswordForm() {
     passedCount <= 1 ? 'Weak' : passedCount <= 3 ? 'Medium' : 'Strong';
 
   const onSubmit = async (data) => {
+    if (!token) {
+      return;
+    }
     try {
-      // Send API Request
-      dispatch(NewPassword({ ...data, token: queryParameters.get('token') }));
+      clearErrors('afterSubmit');
+      const result = await dispatch(NewPassword({ ...data, token }));
+      if (!result?.success && result?.error) {
+        setError('afterSubmit', {
+          type: 'manual',
+          message: result.error,
+        });
+      }
     } catch (error) {
       console.error(error);
+      setError('afterSubmit', {
+        type: 'manual',
+        message: error?.message || 'Password reset failed. Please try again.',
+      });
     }
   };
 
   return (
     <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit)}>
       <Stack spacing={3}>
+        {errors.afterSubmit && (
+          <Alert severity="error">{errors.afterSubmit.message}</Alert>
+        )}
+        {!token && (
+          <Alert severity="warning">
+            No reset token found in URL. Please click the full link sent to your email or request a new reset link.
+          </Alert>
+        )}
         <Box>
           <RHFTextField
             name="password"
@@ -234,7 +264,9 @@ export default function NewPasswordForm() {
           }}
         />
 
-        <Button
+        <LoadingButton
+          loading={isLoading}
+          disabled={!token}
           fullWidth
           size="large"
           type="submit"
@@ -251,8 +283,8 @@ export default function NewPasswordForm() {
             },
           }}
         >
-          Submit
-        </Button>
+          Reset Password
+        </LoadingButton>
       </Stack>
     </FormProvider>
   );

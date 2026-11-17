@@ -1,297 +1,186 @@
 module.exports = (name, link) => {
-    return `<!DOCTYPE HTML PUBLIC "-//W3C//DTD XHTML 1.0 Transitional //EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
-    <html xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
-    
-    <head>
-      <!--[if gte mso 9]>
-    <xml>
-      <o:OfficeDocumentSettings>
-        <o:AllowPNG/>
-        <o:PixelsPerInch>96</o:PixelsPerInch>
-      </o:OfficeDocumentSettings>
-    </xml>
-    <![endif]-->
-      <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
-      <meta name="viewport" content="width=device-width, initial-scale=1.0">
-      <meta name="x-apple-disable-message-reformatting">
-      <!--[if !mso]><!-->
-      <meta http-equiv="X-UA-Compatible" content="IE=edge">
-      <!--<![endif]-->
-      <title></title>
-    
-      <style type="text/css">
-        @media only screen and (min-width: 620px) {
-          .u-row {
-            width: 600px !important;
-          }
-          .u-row .u-col {
-            vertical-align: top;
-          }
-          .u-row .u-col-100 {
-            width: 600px !important;
-          }
-        }
-        
-        @media (max-width: 620px) {
-          .u-row-container {
-            max-width: 100% !important;
-            padding-left: 0px !important;
-            padding-right: 0px !important;
-          }
-          .u-row .u-col {
-            min-width: 320px !important;
-            max-width: 100% !important;
-            display: block !important;
-          }
-          .u-row {
-            width: 100% !important;
-          }
-          .u-col {
-            width: 100% !important;
-          }
-          .u-col>div {
-            margin: 0 auto;
-          }
-        }
-        
-        body {
-          margin: 0;
-          padding: 0;
-        }
-        
-        table,
-        tr,
-        td {
-          vertical-align: top;
-          border-collapse: collapse;
-        }
-        
-        p {
-          margin: 0;
-        }
-        
-        .ie-container table,
-        .mso-container table {
-          table-layout: fixed;
-        }
-        
-        * {
-          line-height: inherit;
-        }
-        
-        a[x-apple-data-detectors='true'] {
-          color: inherit !important;
-          text-decoration: none !important;
-        }
-        
-        table,
-        td {
-          color: #000000;
-        }
-        
-        #u_body a {
-          color: #0000ee;
-          text-decoration: underline;
-        }
-      </style>
-    
-    
-    
-      <!--[if !mso]><!-->
-      <link href="https://fonts.googleapis.com/css?family=Cabin:400,700" rel="stylesheet" type="text/css">
-      <!--<![endif]-->
-    
-    </head>
-    
-    <body class="clean-body u_body" style="margin: 0;padding: 0;-webkit-text-size-adjust: 100%;background-color: #f9f9f9;color: #000000">
-      <!--[if IE]><div class="ie-container"><![endif]-->
-      <!--[if mso]><div class="mso-container"><![endif]-->
-      <table id="u_body" style="border-collapse: collapse;table-layout: fixed;border-spacing: 0;mso-table-lspace: 0pt;mso-table-rspace: 0pt;vertical-align: top;min-width: 320px;Margin: 0 auto;background-color: #f9f9f9;width:100%" cellpadding="0" cellspacing="0">
-        <tbody>
-          <tr style="vertical-align: top">
-            <td style="word-break: break-word;border-collapse: collapse !important;vertical-align: top">
-              <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="background-color: #f9f9f9;"><![endif]-->
-    
-    
-              <div class="u-row-container" style="padding: 0px;background-color: transparent">
-                <div class="u-row" style="Margin: 0 auto;min-width: 320px;max-width: 600px;overflow-wrap: break-word;word-wrap: break-word;word-break: break-word;background-color: #ffffff;">
-                  <div style="border-collapse: collapse;display: table;width: 100%;height: 100%;background-color: transparent;">
-                    <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding: 0px;background-color: transparent;" align="center"><table cellpadding="0" cellspacing="0" border="0" style="width:600px;"><tr style="background-color: #ffffff;"><![endif]-->
-    
-                    <!--[if (mso)|(IE)]><td align="center" width="600" style="width: 600px;padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;" valign="top"><![endif]-->
-                    <div class="u-col u-col-100" style="max-width: 320px;min-width: 600px;display: table-cell;vertical-align: top;">
-                      <div style="height: 100%;width: 100% !important;">
-                        <!--[if (!mso)&(!IE)]><!-->
-                        <div style="box-sizing: border-box; height: 100%; padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;">
-                          <!--<![endif]-->
-    
-                          <table style="font-family:'Cabin',sans-serif;" role="presentation" cellpadding="0" cellspacing="0" width="100%" border="0">
-                            <tbody>
-                              <tr>
-                                <td style="overflow-wrap:break-word;word-break:break-word;padding:20px;font-family:'Cabin',sans-serif;" align="left">
-    
-                                  <table width="100%" cellpadding="0" cellspacing="0" border="0">
-                                    <tr>
-                                      <td style="padding-right: 0px;padding-left: 0px;" align="center">
-    
-                                        <img align="center" border="0" src="https://assets.unlayer.com/projects/47137/1675000768671-logo.ico" alt="Sateeq Logo" title="Sateeq Logo" style="outline: none;text-decoration: none;-ms-interpolation-mode: bicubic;clear: both;display: inline-block !important;border: none;height: auto;float: none;width: 19%;max-width: 106.4px;"
-                                          width="106.4" />
-    
-                                      </td>
-                                    </tr>
-                                  </table>
-    
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-    
-                          <!--[if (!mso)&(!IE)]><!-->
-                        </div>
-                        <!--<![endif]-->
-                      </div>
-                    </div>
-                    <!--[if (mso)|(IE)]></td><![endif]-->
-                    <!--[if (mso)|(IE)]></tr></table></td></tr></table><![endif]-->
-                  </div>
-                </div>
-              </div>
-    
-    
-    
-              <div class="u-row-container" style="padding: 0px;background-color: transparent">
-                <div class="u-row" style="Margin: 0 auto;min-width: 320px;max-width: 600px;overflow-wrap: break-word;word-wrap: break-word;word-break: break-word;background-color: #e5eaf5;">
-                  <div style="border-collapse: collapse;display: table;width: 100%;height: 100%;background-color: transparent;">
-                    <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding: 0px;background-color: transparent;" align="center"><table cellpadding="0" cellspacing="0" border="0" style="width:600px;"><tr style="background-color: #e5eaf5;"><![endif]-->
-    
-                    <!--[if (mso)|(IE)]><td align="center" width="600" style="width: 600px;padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;" valign="top"><![endif]-->
-                    <div class="u-col u-col-100" style="max-width: 320px;min-width: 600px;display: table-cell;vertical-align: top;">
-                      <div style="height: 100%;width: 100% !important;">
-                        <!--[if (!mso)&(!IE)]><!-->
-                        <div style="box-sizing: border-box; height: 100%; padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;">
-                          <!--<![endif]-->
-    
-                          <table style="font-family:'Cabin',sans-serif;" role="presentation" cellpadding="0" cellspacing="0" width="100%" border="0">
-                            <tbody>
-                              <tr>
-                                <td style="overflow-wrap:break-word;word-break:break-word;padding:55px;font-family:'Cabin',sans-serif;" align="left">
-    
-                                  <div style="color: #ffffff; line-height: 140%; text-align: left; word-wrap: break-word;">
-                                    <p style="font-size: 14px; line-height: 140%;"><span style="color: #000000; line-height: 19.6px;">Hello ${name},</span></p>
-                                    <p style="font-size: 14px; line-height: 140%;"> </p>
-                                    <p style="font-size: 14px; line-height: 140%;"><span style="color: #000000; line-height: 19.6px;">Please click on the given button to reset your password</span><br /><br /><span style="color: #000000; line-height: 19.6px;">Note: This link is valid for only 10 mins.</span></p>
-                                    <p style="font-size: 14px; line-height: 140%;"><br /><br /><span style="color: #000000; line-height: 19.6px;">Thanks &amp; Regards</span><br /><span style="color: #000000; line-height: 19.6px;">Team Task</span></p>
-                                  </div>
-    
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-    
-                          <!--[if (!mso)&(!IE)]><!-->
-                        </div>
-                        <!--<![endif]-->
-                      </div>
-                    </div>
-                    <!--[if (mso)|(IE)]></td><![endif]-->
-                    <!--[if (mso)|(IE)]></tr></table></td></tr></table><![endif]-->
-                  </div>
-                </div>
-              </div>
-    
-    
-    
-              <div class="u-row-container" style="padding: 0px;background-color: transparent">
-                <div class="u-row" style="Margin: 0 auto;min-width: 320px;max-width: 600px;overflow-wrap: break-word;word-wrap: break-word;word-break: break-word;background-color: #e5eaf5;">
-                  <div style="border-collapse: collapse;display: table;width: 100%;height: 100%;background-color: transparent;">
-                    <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding: 0px;background-color: transparent;" align="center"><table cellpadding="0" cellspacing="0" border="0" style="width:600px;"><tr style="background-color: #e5eaf5;"><![endif]-->
-    
-                    <!--[if (mso)|(IE)]><td align="center" width="600" style="width: 600px;padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;" valign="top"><![endif]-->
-                    <div class="u-col u-col-100" style="max-width: 320px;min-width: 600px;display: table-cell;vertical-align: top;">
-                      <div style="height: 100%;width: 100% !important;">
-                        <!--[if (!mso)&(!IE)]><!-->
-                        <div style="box-sizing: border-box; height: 100%; padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;">
-                          <!--<![endif]-->
-    
-                          <table style="font-family:'Cabin',sans-serif;" role="presentation" cellpadding="0" cellspacing="0" width="100%" border="0">
-                            <tbody>
-                              <tr>
-                                <td style="overflow-wrap:break-word;word-break:break-word;padding:10px;font-family:'Cabin',sans-serif;" align="left">
-    
-                                  <!--[if mso]><style>.v-button {background: transparent !important;}</style><![endif]-->
-                                  <div align="center">
-                                    <!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="${link}" style="height:56px; v-text-anchor:middle; width:156px;" arcsize="7%"  stroke="f" fillcolor="#115581"><w:anchorlock/><center style="color:#FFFFFF;font-family:'Cabin',sans-serif;"><![endif]-->
-                                    <a href="${link}" target="_blank" class="v-button" style="box-sizing: border-box;display: inline-block;font-family:'Cabin',sans-serif;text-decoration: none;-webkit-text-size-adjust: none;text-align: center;color: #FFFFFF; background-color: #115581; border-radius: 4px;-webkit-border-radius: 4px; -moz-border-radius: 4px; width:auto; max-width:100%; overflow-wrap: break-word; word-break: break-word; word-wrap:break-word; mso-border-alt: none;font-size: 14px;">
-                                      <span style="display:block;padding:20px 32px;line-height:120%;"><span style="line-height: 16.8px;">Reset Password</span></span>
-                                    </a>
-                                    <!--[if mso]></center></v:roundrect><![endif]-->
-                                  </div>
-    
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-    
-                          <!--[if (!mso)&(!IE)]><!-->
-                        </div>
-                        <!--<![endif]-->
-                      </div>
-                    </div>
-                    <!--[if (mso)|(IE)]></td><![endif]-->
-                    <!--[if (mso)|(IE)]></tr></table></td></tr></table><![endif]-->
-                  </div>
-                </div>
-              </div>
-    
-    
-    
-              <div class="u-row-container" style="padding: 0px;background-color: transparent">
-                <div class="u-row" style="Margin: 0 auto;min-width: 320px;max-width: 600px;overflow-wrap: break-word;word-wrap: break-word;word-break: break-word;background-color: transparent;">
-                  <div style="border-collapse: collapse;display: table;width: 100%;height: 100%;background-color: transparent;">
-                    <!--[if (mso)|(IE)]><table width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="padding: 0px;background-color: transparent;" align="center"><table cellpadding="0" cellspacing="0" border="0" style="width:600px;"><tr style="background-color: transparent;"><![endif]-->
-    
-                    <!--[if (mso)|(IE)]><td align="center" width="600" style="width: 600px;padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;border-radius: 0px;-webkit-border-radius: 0px; -moz-border-radius: 0px;" valign="top"><![endif]-->
-                    <div class="u-col u-col-100" style="max-width: 320px;min-width: 600px;display: table-cell;vertical-align: top;">
-                      <div style="height: 100%;width: 100% !important;border-radius: 0px;-webkit-border-radius: 0px; -moz-border-radius: 0px;">
-                        <!--[if (!mso)&(!IE)]><!-->
-                        <div style="box-sizing: border-box; height: 100%; padding: 0px;border-top: 0px solid transparent;border-left: 0px solid transparent;border-right: 0px solid transparent;border-bottom: 0px solid transparent;border-radius: 0px;-webkit-border-radius: 0px; -moz-border-radius: 0px;">
-                          <!--<![endif]-->
-    
-                          <table style="font-family:'Cabin',sans-serif;" role="presentation" cellpadding="0" cellspacing="0" width="100%" border="0">
-                            <tbody>
-                              <tr>
-                                <td style="overflow-wrap:break-word;word-break:break-word;padding:48px;font-family:'Cabin',sans-serif;" align="left">
-    
-                                  <div style="color: #958d8d; line-height: 170%; text-align: center; word-wrap: break-word;">
-                                    <p style="font-size: 14px; line-height: 170%;">Love 💙 Team Tawk</p>
-                                    <p style="font-size: 14px; line-height: 170%;">For any assistance and queries write to us at <a rel="noopener" href="mailto:support@codingmonk.in?" target="_blank">Support@codingmonk.in</a><br /><br /></p>
-                                  </div>
-    
-                                </td>
-                              </tr>
-                            </tbody>
-                          </table>
-    
-                          <!--[if (!mso)&(!IE)]><!-->
-                        </div>
-                        <!--<![endif]-->
-                      </div>
-                    </div>
-                    <!--[if (mso)|(IE)]></td><![endif]-->
-                    <!--[if (mso)|(IE)]></tr></table></td></tr></table><![endif]-->
-                  </div>
-                </div>
-              </div>
-    
-    
-              <!--[if (mso)|(IE)]></td></tr></table><![endif]-->
-            </td>
-          </tr>
-        </tbody>
-      </table>
-      <!--[if mso]></div><![endif]-->
-      <!--[if IE]></div><![endif]-->
-    </body>
-    
-    </html>`
-}
+  const currentYear = new Date().getFullYear();
+  const userName = name ? String(name).trim() : "there";
+
+  return `<!DOCTYPE html>
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <title>Reset Your Trackon Password</title>
+  <style type="text/css">
+    body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
+    table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
+    img { -ms-interpolation-mode: bicubic; border: 0; outline: none; text-decoration: none; }
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100% !important;
+      min-width: 100%;
+      height: 100% !important;
+      background-color: #f1f5f9;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      color: #1e293b;
+    }
+    .wrapper {
+      width: 100%;
+      table-layout: fixed;
+      background-color: #f1f5f9;
+      padding-top: 40px;
+      padding-bottom: 40px;
+    }
+    .main-card {
+      background-color: #ffffff;
+      margin: 0 auto;
+      max-width: 580px;
+      border-radius: 12px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+    }
+    .header-bar {
+      background: linear-gradient(135deg, #0162C4 0%, #004b99 100%);
+      padding: 32px 40px 28px 40px;
+      text-align: center;
+    }
+    .brand-title {
+      color: #ffffff;
+      font-size: 26px;
+      font-weight: 800;
+      letter-spacing: 2px;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    .brand-subtitle {
+      color: #cbd5e1;
+      font-size: 13px;
+      margin-top: 6px;
+      letter-spacing: 0.5px;
+    }
+    .content-body {
+      padding: 36px 40px;
+    }
+    .greeting {
+      font-size: 18px;
+      font-weight: 700;
+      color: #0f172a;
+      margin: 0 0 16px 0;
+    }
+    .paragraph {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #334155;
+      margin: 0 0 20px 0;
+    }
+    .button-container {
+      text-align: center;
+      margin: 32px 0;
+    }
+    .reset-button {
+      display: inline-block;
+      background-color: #0162C4;
+      color: #ffffff !important;
+      font-size: 15px;
+      font-weight: 700;
+      text-decoration: none;
+      padding: 14px 32px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(1, 98, 196, 0.25);
+    }
+    .reset-button:hover {
+      background-color: #004b99;
+    }
+    .notice-box {
+      background-color: #eff6ff;
+      border-left: 4px solid #0162C4;
+      padding: 14px 16px;
+      border-radius: 4px;
+      margin: 24px 0;
+    }
+    .notice-text {
+      font-size: 13px;
+      line-height: 1.5;
+      color: #1e40af;
+      margin: 0;
+    }
+    .raw-link-box {
+      font-size: 13px;
+      line-height: 1.6;
+      color: #64748b;
+      word-break: break-all;
+      margin-top: 24px;
+      padding-top: 20px;
+      border-top: 1px solid #e2e8f0;
+    }
+    .raw-link {
+      color: #0162C4;
+      text-decoration: underline;
+    }
+    .footer {
+      background-color: #f8fafc;
+      padding: 24px 40px;
+      text-align: center;
+      border-top: 1px solid #e2e8f0;
+    }
+    .footer-text {
+      font-size: 12px;
+      color: #94a3b8;
+      line-height: 1.5;
+      margin: 0;
+    }
+    @media only screen and (max-width: 600px) {
+      .main-card {
+        border-radius: 0 !important;
+        border: none !important;
+      }
+      .content-body, .header-bar, .footer {
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="main-card">
+      <div class="header-bar">
+        <h1 class="brand-title">TRACKON</h1>
+        <div class="brand-subtitle">Password Recovery</div>
+      </div>
+      <div class="content-body">
+        <p class="greeting">Hello ${userName},</p>
+        <p class="paragraph">
+          We received a request to reset your Trackon account password. Click the button below to choose a new, secure password:
+        </p>
+
+        <div class="button-container">
+          <a href="${link}" target="_blank" class="reset-button">Reset Password</a>
+        </div>
+
+        <div class="notice-box">
+          <p class="notice-text">
+            <strong>Security Notice:</strong> This password reset link is time-sensitive and valid for only <strong>10 minutes</strong>.
+          </p>
+        </div>
+
+        <p class="paragraph" style="font-size: 14px; color: #64748b;">
+          If you did not make this request, you can safely ignore this email. Your current password will remain unchanged and your account is secure.
+        </p>
+
+        <div class="raw-link-box">
+          If the button above does not work, copy and paste this link into your web browser:<br>
+          <a href="${link}" class="raw-link" target="_blank">${link}</a>
+        </div>
+      </div>
+      <div class="footer">
+        <p class="footer-text">
+          &copy; ${currentYear} Trackon. All rights reserved.<br>
+          This is an automated notification. Please do not reply directly to this email.
+        </p>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+};

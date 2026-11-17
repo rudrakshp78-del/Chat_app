@@ -15,7 +15,9 @@ const catchAsync = require("../utils/catchAsync");
 
 // this function will return you jwt token
 const signToken = (userId) =>
-  jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  jwt.sign({ userId }, process.env.JWT_SECRET, {
+    expiresIn: process.env.JWT_EXPIRES_IN || "90d",
+  });
 
 // Register New User
 
@@ -132,11 +134,14 @@ exports.sendOTP = catchAsync(async (req, res, next) => {
   let emailSent = false;
   try {
     await mailService.sendEmail({
-      from: process.env.SENDGRID_FROM_EMAIL || "support@trackon.app",
+      from:
+        process.env.MAIL_FROM ||
+        process.env.GMAIL_USER ||
+        process.env.SENDGRID_FROM_EMAIL ||
+        "support@trackon.app",
       to: user.email,
       subject: "Verification OTP",
       html: otp(user.firstName, new_otp),
-      attachments: [],
     });
     emailSent = true;
   } catch (err) {
@@ -196,14 +201,17 @@ exports.resendOTP = catchAsync(async (req, res, next) => {
 
   try {
     await mailService.sendEmail({
-      from: process.env.SENDGRID_FROM_EMAIL,
+      from:
+        process.env.MAIL_FROM ||
+        process.env.GMAIL_USER ||
+        process.env.SENDGRID_FROM_EMAIL ||
+        "support@trackon.app",
       to: user.email,
       subject: "Verification OTP",
       html: otp(user.firstName, new_otp),
-      attachments: [],
     });
   } catch (err) {
-    console.error("Failed to send OTP email:", err);
+    console.error("Failed to send OTP email:", err?.message || err);
   }
 
   return res.status(200).json({
@@ -451,27 +459,61 @@ exports.protect = catchAsync(async (req, res, next) => {
 
   if (!token) {
     return res.status(401).json({
+      status: "error",
       message: "You are not logged in! Please log in to get access.",
     });
   }
-  // 2) Verification of token
-  const decoded = await promisify(jwt.verify)(token, process.env.JWT_SECRET);
 
-  console.log(decoded);
+  // 2) Verification of token (with transparent recovery for authentic expired tokens)
+  let decoded;
+  let isExpired = false;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET);
+  } catch (err) {
+    if (err.name === "TokenExpiredError") {
+      try {
+        decoded = jwt.verify(token, process.env.JWT_SECRET, {
+          ignoreExpiration: true,
+        });
+        isExpired = true;
+      } catch (innerErr) {
+        return res.status(401).json({
+          status: "error",
+          message: "Invalid token signature. Please log in again.",
+        });
+      }
+    } else {
+      return res.status(401).json({
+        status: "error",
+        message: "Invalid token. Please log in again.",
+      });
+    }
+  }
 
   // 3) Check if user still exists
-
   const this_user = await User.findById(decoded.userId).select("+passwordChangedAt");
   if (!this_user) {
     return res.status(401).json({
-      message: "The user belonging to this token does no longer exists.",
+      status: "error",
+      message: "The user belonging to this token no longer exists.",
     });
   }
+
   // 4) Check if user changed password after the token was issued
   if (this_user.changedPasswordAfter(decoded.iat)) {
     return res.status(401).json({
+      status: "error",
       message: "User recently changed password! Please log in again.",
     });
+  }
+
+  // 5) Auto-renew token if expired or near expiry (< 7 days remaining)
+  const nowInSec = Math.floor(Date.now() / 1000);
+  const secondsRemaining = (decoded.exp || 0) - nowInSec;
+  if (isExpired || secondsRemaining < 7 * 24 * 3600) {
+    const refreshedToken = signToken(this_user._id);
+    res.setHeader("x-new-token", refreshedToken);
+    res.setHeader("Access-Control-Expose-Headers", "x-new-token");
   }
 
   // GRANT ACCESS TO PROTECTED ROUTE
@@ -479,69 +521,224 @@ exports.protect = catchAsync(async (req, res, next) => {
   next();
 });
 
+exports.refreshToken = catchAsync(async (req, res, next) => {
+  let token = req.body?.token;
+  if (!token && req.headers.authorization && req.headers.authorization.startsWith("Bearer")) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  if (!token) {
+    return res.status(400).json({
+      status: "error",
+      message: "Token is required for refresh",
+    });
+  }
+
+  let decoded;
+  try {
+    decoded = jwt.verify(token, process.env.JWT_SECRET, {
+      ignoreExpiration: true,
+    });
+  } catch (err) {
+    return res.status(401).json({
+      status: "error",
+      message: "Invalid token signature",
+    });
+  }
+
+  const user = await User.findById(decoded.userId).select("+passwordChangedAt");
+  if (!user) {
+    return res.status(401).json({
+      status: "error",
+      message: "User no longer exists",
+    });
+  }
+
+  if (user.changedPasswordAfter(decoded.iat)) {
+    return res.status(401).json({
+      status: "error",
+      message: "Password was changed recently. Please log in again.",
+    });
+  }
+
+  const newToken = signToken(user._id);
+
+  res.setHeader("x-new-token", newToken);
+  res.setHeader("Access-Control-Expose-Headers", "x-new-token");
+
+  res.status(200).json({
+    status: "success",
+    message: "Token refreshed successfully",
+    token: newToken,
+    user_id: user._id,
+  });
+});
+
 exports.forgotPassword = catchAsync(async (req, res, next) => {
-  // 1) Get user based on POSTed email
-  const user = await User.findOne({ email: req.body.email });
+  // 1) Validate and normalize email
+  const email = (req.body.email || "").trim().toLowerCase();
+  if (!email) {
+    return res.status(400).json({
+      status: "error",
+      message: "Please enter your email address.",
+    });
+  }
+
+  // 2) Get user based on POSTed email (with case-insensitive fallback for legacy records)
+  let user = await User.findOne({ email });
+  if (!user) {
+    const escapedEmail = email.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    user = await User.findOne({ email: new RegExp(`^${escapedEmail}$`, "i") });
+  }
   if (!user) {
     return res.status(404).json({
       status: "error",
-      message: "There is no user with email address.",
+      message: "There is no account registered with that email address.",
     });
   }
 
-  // 2) Generate the random reset token
+  // 3) Generate secure, unique, time-limited password reset token
+  // Store only the SHA-256 hashed token in the database
   const resetToken = user.createPasswordResetToken();
   await user.save({ validateBeforeSave: false });
 
-  // 3) Send it to user's email
+  // 4) Dynamically resolve valid Trackon app frontend reset URL
+  const isProd = process.env.NODE_ENV === "production";
+  const isLocalOrMobileOrigin = (urlStr) =>
+    !urlStr ||
+    urlStr === "null" ||
+    /^(capacitor|ionic|file):\/\//i.test(urlStr) ||
+    /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?(\/|$)/i.test(urlStr);
+
+  let frontendOrigin = (process.env.FRONTEND_URL || "").trim();
+  if (isProd && isLocalOrMobileOrigin(frontendOrigin)) {
+    frontendOrigin = "";
+  }
+
+  if (!frontendOrigin) {
+    const reqOrigin = (req.get("origin") || "").trim();
+    if (reqOrigin && (!isProd || !isLocalOrMobileOrigin(reqOrigin))) {
+      frontendOrigin = reqOrigin;
+    } else if (req.get("referer")) {
+      try {
+        const refOrigin = new URL(req.get("referer")).origin;
+        if (!isProd || !isLocalOrMobileOrigin(refOrigin)) {
+          frontendOrigin = refOrigin;
+        }
+      } catch (e) {}
+    }
+  }
+
+  if (!frontendOrigin) {
+    frontendOrigin = isProd
+      ? "https://trackon.netlify.app"
+      : "http://localhost:3000";
+  }
+  frontendOrigin = frontendOrigin.replace(/\/+$/, "");
+  const resetURL = `${frontendOrigin}/auth/new-password?token=${resetToken}`;
+
+  console.log("==========================================");
+  console.log("🔑 PASSWORD RESET REQUEST");
+  console.log("Recipient:", user.email);
+  if (!isProd) console.log("Reset URL:", resetURL);
+  console.log("Expires in: 10 minutes");
+  console.log("==========================================");
+
+  // 5) Dispatch professional email with reset link
+  let emailSent = false;
+  let mailResult = null;
+  let mailError = null;
+
   try {
-    const resetURL = `http://localhost:3000/auth/new-password?token=${resetToken}`;
-    // TODO => Send Email with this Reset URL to user's email address
+    const fromAddress =
+      process.env.MAIL_FROM ||
+      process.env.SMTP_FROM ||
+      process.env.BREVO_FROM_EMAIL ||
+      process.env.RESEND_FROM_EMAIL ||
+      process.env.GMAIL_USER ||
+      process.env.EMAIL_USER ||
+      process.env.SENDGRID_FROM_EMAIL ||
+      "Trackon Support <support@trackon.app>";
 
-    console.log(resetURL);
-
-    await mailService.sendEmail({
-      from: process.env.SENDGRID_FROM_EMAIL,
+    mailResult = await mailService.sendEmail({
+      from: fromAddress,
       to: user.email,
-      subject: "Reset Password",
-      html: resetPassword(user.firstName, resetURL),
-      attachments: [],
+      subject: "Reset your Trackon password",
+      html: resetPassword(user.firstName || "there", resetURL),
+      text: `Hello ${user.firstName || "there"},\n\nWe received a request to reset your Trackon password. Visit the link below to set a new password:\n\n${resetURL}\n\nThis link is valid for 10 minutes.\n\nIf you did not make this request, you can safely ignore this email.\n\nBest regards,\nTrackon Security Team`,
     });
-
-    res.status(200).json({
-      status: "success",
-      message: "Token sent to email!",
-    });
+    emailSent = true;
   } catch (err) {
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save({ validateBeforeSave: false });
+    mailError = err;
+    console.error("❌ Failed to send password reset email:", err?.message || err);
+  }
 
-    return res.status(500).json({
-      message: "There was an error sending the email. Try again later!",
+  // If email was sent or simulated in development
+  if (emailSent) {
+    return res.status(200).json({
+      status: "success",
+      message: "Password reset link sent to your email!",
+      emailSent: true,
+      ...(mailResult?.previewUrl ? { previewUrl: mailResult.previewUrl } : {}),
+      ...(!isProd ? { dev_reset_url: resetURL } : {}),
     });
   }
+
+  // If mail delivery failed:
+  // In development, keep token valid so testing can proceed with console link
+  if (!isProd) {
+    return res.status(200).json({
+      status: "success",
+      message: "Password reset link generated! (Check console for reset link)",
+      emailSent: false,
+      dev_reset_url: resetURL,
+      token: resetToken,
+    });
+  }
+
+  // In production, invalidate token if email completely failed
+  user.passwordResetToken = undefined;
+  user.passwordResetExpires = undefined;
+  await user.save({ validateBeforeSave: false });
+
+  return res.status(503).json({
+    status: "error",
+    message:
+      mailError?.message ||
+      "There was an error sending the reset email. Please try again later or contact support.",
+  });
 });
 
 exports.resetPassword = catchAsync(async (req, res, next) => {
-  // 1) Get user based on the token
+  // 1) Validate token
+  const token = req.body.token ? String(req.body.token).trim() : "";
+  if (!token) {
+    return res.status(400).json({
+      status: "error",
+      message: "Reset token is missing or invalid. Please request a new password reset link.",
+    });
+  }
+
+  // 2) Get user based on the hashed token
   const hashedToken = crypto
     .createHash("sha256")
-    .update(req.body.token)
+    .update(token)
     .digest("hex");
 
   const user = await User.findOne({
     passwordResetToken: hashedToken,
     passwordResetExpires: { $gt: Date.now() },
-  });
+  }).select("+passwordResetToken +passwordResetExpires");
 
-  // 2) If token has not expired, and there is user, set the new password
+  // 3) If token has expired or invalid
   if (!user) {
     return res.status(400).json({
       status: "error",
-      message: "Token is Invalid or Expired",
+      message: "Password reset token is invalid or has expired. Please request a new link.",
     });
   }
+
+  // 4) Validate new password
   const { password, passwordConfirm } = req.body;
   if (!password || typeof password !== "string") {
     return res.status(400).json({
@@ -549,11 +746,20 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
       message: "Password is required",
     });
   }
+
+  if (passwordConfirm && password !== passwordConfirm) {
+    return res.status(400).json({
+      status: "error",
+      message: "Passwords do not match.",
+    });
+  }
+
   const isStrongReset =
     password.length >= 8 &&
     /[a-zA-Z]/.test(password) &&
     /[0-9]/.test(password) &&
     /[^a-zA-Z0-9]/.test(password);
+
   if (!isStrongReset) {
     return res.status(400).json({
       status: "error",
@@ -561,20 +767,22 @@ exports.resetPassword = catchAsync(async (req, res, next) => {
         "Password must be strong. It must be at least 8 characters long and include numbers, letters, and special characters (!@#$%...).",
     });
   }
+
+  // 5) Save new password (pre-save hook hashes with bcrypt)
   user.password = password;
   user.passwordConfirm = passwordConfirm;
   user.passwordResetToken = undefined;
   user.passwordResetExpires = undefined;
   await user.save();
 
-  // 3) Update changedPasswordAt property for the user
-  // 4) Log the user in, send JWT
-  const token = signToken(user._id);
+  // 6) Sign new JWT token and log user in
+  const authToken = signToken(user._id);
 
   res.status(200).json({
     status: "success",
-    message: "Password Reseted Successfully",
-    token,
+    message: "Password Reset Successfully",
+    token: authToken,
+    user_id: user._id,
   });
 });
 
