@@ -1,13 +1,19 @@
 import React from "react";
 import { useSelector } from "react-redux";
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { Container } from "@mui/material";
 
 const MainLayout = () => {
   const { isLoggedIn } = useSelector((state) => state.auth);
+  const { pathname } = useLocation();
 
-  // If already logged in, don't allow auth pages
-  if (isLoggedIn) {
+  // Always allow password reset routes even if another user is currently logged in
+  const normalizedPath = (pathname || "").toLowerCase();
+  const isPasswordResetRoute =
+    normalizedPath.startsWith("/auth/new-password") ||
+    normalizedPath.startsWith("/auth/reset-password");
+
+  if (isLoggedIn && !isPasswordResetRoute) {
     return <Navigate to="/app" replace />;
   }
 

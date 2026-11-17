@@ -28,6 +28,7 @@ export default function NewPasswordForm() {
   const { isLoading } = useSelector((state) => state.auth);
   const [queryParameters] = useSearchParams();
   const [showPassword, setShowPassword] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
   const token = queryParameters.get('token');
 
   const VerifyCodeSchema = Yup.object().shape({
@@ -84,7 +85,13 @@ export default function NewPasswordForm() {
     try {
       clearErrors('afterSubmit');
       const result = await dispatch(NewPassword({ ...data, token }));
-      if (!result?.success && result?.error) {
+      if (result?.success) {
+        setResetSuccess(true);
+        // Full reload to /app so Redux & Socket initialize cleanly for the reset user's own account
+        setTimeout(() => {
+          window.location.replace('/app');
+        }, 800);
+      } else if (result?.error) {
         setError('afterSubmit', {
           type: 'manual',
           message: result.error,
@@ -102,6 +109,11 @@ export default function NewPasswordForm() {
   return (
     <FormProvider methods={methods} onSubmit={handleSubmit(onSubmit)}>
       <Stack spacing={3}>
+        {resetSuccess && (
+          <Alert severity="success">
+            Password reset successfully! Redirecting to your account...
+          </Alert>
+        )}
         {errors.afterSubmit && (
           <Alert severity="error">{errors.afterSubmit.message}</Alert>
         )}

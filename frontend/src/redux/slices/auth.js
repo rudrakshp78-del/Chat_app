@@ -115,6 +115,37 @@ export function NewPassword(formValues) {
       const token = response.data?.token;
       const user_id = response.data?.user_id;
 
+      // Clear any previous logged-in user's socket & cached state before switching to the reset user
+      try {
+        if (socket) {
+          const prevUserId =
+            typeof window !== "undefined"
+              ? window.localStorage.getItem("user_id")
+              : null;
+          if (prevUserId && socket.connected) {
+            socket.emit("end", { user_id: prevUserId });
+          }
+          socket.disconnect();
+        }
+      } catch (err) {
+        console.error("Socket disconnect error during password reset:", err);
+      }
+
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem("token");
+        window.localStorage.removeItem("accessToken");
+        window.localStorage.removeItem("user_id");
+        window.localStorage.removeItem("trackon_cached_conversations");
+        window.localStorage.removeItem("redux-root");
+        if (token) {
+          window.localStorage.setItem("token", token);
+          window.localStorage.setItem("accessToken", token);
+        }
+        if (user_id) {
+          window.localStorage.setItem("user_id", user_id);
+        }
+      }
+
       dispatch(
         slice.actions.logIn({
           isLoggedIn: true,
